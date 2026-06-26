@@ -16,11 +16,10 @@ name: Generate Skills
 
 on:
   schedule:
-    - cron: "0 * * * *" # Hourly — keeps skills in sync with Discovery API changes
+    - cron: "0 6 * * *" # Daily — keeps skills in sync with Discovery API changes
   workflow_dispatch: # Manual trigger
-  push:
-    branches-ignore:
-      - main # main is kept up to date by PR merges
+  # Note: no push trigger — regeneration runs on the daily cron (or manually) and
+  # opens a sync PR, rather than committing to every contributor branch.
 
 concurrency:
   group: generate-skills-${{ github.ref_name }}
@@ -42,7 +41,7 @@ jobs:
         with:
           # For cron/dispatch: check out main. For push: check out the branch.
           ref: ${{ github.head_ref || github.ref_name }}
-          token: ${{ secrets.GOOGLEWORKSPACE_BOT_TOKEN }}
+          token: ${{ secrets.RELEASE_TOKEN || github.token }}
 
       - name: Install Rust
         uses: dtolnay/rust-toolchain@631a55b12751854ce901bb631d5902ceb48146f7 # stable
@@ -76,7 +75,7 @@ jobs:
           mkdir -p .changeset
           cat > .changeset/sync-skills.md << 'EOF'
           ---
-          "@googleworkspace/cli": patch
+          "gws-cli": patch
           ---
 
           Sync generated skills with latest Google Discovery API specs
@@ -88,7 +87,7 @@ jobs:
           (github.event_name == 'schedule' || github.event_name == 'workflow_dispatch')
         uses: peter-evans/create-pull-request@22a9089034f40e5a961c8808d113e2c98fb63676 # v7
         with:
-          token: ${{ secrets.GOOGLEWORKSPACE_BOT_TOKEN }}
+          token: ${{ secrets.RELEASE_TOKEN || github.token }}
           branch: chore/sync-skills
           title: "chore: sync skills with Discovery API"
           body: |
@@ -102,18 +101,3 @@ jobs:
             docs/skills.md
             .changeset/sync-skills.md
           delete-branch: true
-
-      # --- Push events (non-main branches): commit directly ---
-      - name: Commit and push if changed
-        if: >-
-          steps.diff.outputs.changed == 'true' &&
-          github.event_name == 'push'
-        env:
-          GITHUB_TOKEN: ${{ secrets.GOOGLEWORKSPACE_BOT_TOKEN }}
-        run: |
-          git config user.name  "googleworkspace-bot"
-          git config user.email "googleworkspace-bot@users.noreply.github.com"
-
-          git add skills/ docs/skills.md
-          git commit -m "chore: regenerate skills [skip ci]"
-          git push

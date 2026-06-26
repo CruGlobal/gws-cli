@@ -1,7 +1,8 @@
-# Release workflow for @googleworkspace/cli
+# Release workflow for gws-cli
 #
 # Triggered by pushing a semver tag (e.g. v0.22.3).
-# Builds platform binaries, creates a GitHub Release, publishes to npm and crates.io.
+# Builds platform binaries and creates a GitHub Release.
+# This fork does not publish to npm or crates.io.
 
 name: Release
 permissions:
@@ -91,7 +92,7 @@ jobs:
       - name: Package (unix)
         if: matrix.archive == 'tar.gz'
         run: |
-          ARTIFACT="google-workspace-cli-${{ matrix.target }}"
+          ARTIFACT="gws-${{ matrix.target }}"
           mkdir -p staging
           cp "target/${{ matrix.target }}/release/gws" staging/
           cp LICENSE README.md CHANGELOG.md staging/
@@ -102,7 +103,7 @@ jobs:
       - name: Package (windows)
         if: matrix.archive == 'zip'
         run: |
-          $ARTIFACT = "google-workspace-cli-${{ matrix.target }}"
+          $ARTIFACT = "gws-${{ matrix.target }}"
           New-Item -ItemType Directory -Path $ARTIFACT
           Copy-Item "target/${{ matrix.target }}/release/gws.exe" "$ARTIFACT/"
           Copy-Item LICENSE, README.md, CHANGELOG.md "$ARTIFACT/"
@@ -114,14 +115,14 @@ jobs:
         if: github.ref_type == 'tag'
         uses: actions/attest-build-provenance@43d14bc2b83dec42d39ecae14e916627a18bb661 # v3
         with:
-          subject-path: google-workspace-cli-${{ matrix.target }}.${{ matrix.archive }}
+          subject-path: gws-${{ matrix.target }}.${{ matrix.archive }}
 
       - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
         with:
           name: binary-${{ matrix.target }}
           path: |
-            google-workspace-cli-${{ matrix.target }}.${{ matrix.archive }}
-            google-workspace-cli-${{ matrix.target }}.${{ matrix.archive }}.sha256
+            gws-${{ matrix.target }}.${{ matrix.archive }}
+            gws-${{ matrix.target }}.${{ matrix.archive }}.sha256
 
   release:
     needs: [plan, build]
@@ -155,21 +156,21 @@ jobs:
           
           \`\`\`bash
           # 1. Download the archive and its checksum
-          curl -sLO https://github.com/googleworkspace/cli/releases/download/${{ github.ref_name }}/google-workspace-cli-<target>.tar.gz
-          curl -sLO https://github.com/googleworkspace/cli/releases/download/${{ github.ref_name }}/google-workspace-cli-<target>.tar.gz.sha256
+          curl -sLO https://github.com/CruGlobal/gws-cli/releases/download/${{ github.ref_name }}/gws-<target>.tar.gz
+          curl -sLO https://github.com/CruGlobal/gws-cli/releases/download/${{ github.ref_name }}/gws-<target>.tar.gz.sha256
           
           # 2. Verify the checksum
-          shasum -a 256 -c google-workspace-cli-<target>.tar.gz.sha256
+          shasum -a 256 -c gws-<target>.tar.gz.sha256
           
           # 3. Extract and install
-          tar -xzf google-workspace-cli-<target>.tar.gz
+          tar -xzf gws-<target>.tar.gz
           chmod +x gws
           sudo mv gws /usr/local/bin/
           \`\`\`
           
           ### Windows
           
-          1. Download \`google-workspace-cli-x86_64-pc-windows-msvc.zip\` and its \`.sha256\` file
+          1. Download \`gws-x86_64-pc-windows-msvc.zip\` and its \`.sha256\` file
           2. Verify the checksum (e.g., using PowerShell \`Get-FileHash\`)
           3. Extract the archive and move \`gws.exe\` to a directory included in your system \`PATH\`.
           
@@ -183,45 +184,3 @@ jobs:
             --generate-notes \
             $PRERELEASE_FLAG \
             artifacts/*
-
-  publish-npm:
-    needs: [plan, release]
-    runs-on: ubuntu-latest
-    if: ${{ needs.plan.outputs.publishing == 'true' && needs.plan.outputs.prerelease == 'false' }}
-    steps:
-      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
-
-      - uses: actions/setup-node@53b83947a5a98c8d113130e565377fae1a50d02f # v6
-        with:
-          node-version: '20.x'
-          registry-url: 'https://wombat-dressing-room.appspot.com'
-
-      - name: Publish to npm
-        working-directory: npm
-        run: npm publish --access public
-        env:
-          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
-
-  publish-cargo:
-    needs: [plan, release]
-    runs-on: ubuntu-latest
-    if: ${{ needs.plan.outputs.publishing == 'true' && needs.plan.outputs.prerelease == 'false' }}
-    steps:
-      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
-
-      - uses: dtolnay/rust-toolchain@631a55b12751854ce901bb631d5902ceb48146f7 # stable
-
-      # Publish library crate first (CLI depends on it)
-      - name: Publish google-workspace
-        run: cargo publish --package google-workspace
-        env:
-          CARGO_REGISTRY_TOKEN: ${{ secrets.CARGO_REGISTRY_TOKEN }}
-
-      # Wait for crates.io to index the library crate
-      - name: Wait for crates.io index
-        run: sleep 30
-
-      - name: Publish google-workspace-cli
-        run: cargo publish --package google-workspace-cli
-        env:
-          CARGO_REGISTRY_TOKEN: ${{ secrets.CARGO_REGISTRY_TOKEN }}

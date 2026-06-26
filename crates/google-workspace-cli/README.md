@@ -6,15 +6,16 @@
 
 ## Install
 
-Download the pre-built binary for your OS and architecture from the **[GitHub Releases](https://github.com/googleworkspace/cli/releases)** page.
+Download the pre-built binary for your OS and architecture from the **[GitHub Releases](https://github.com/CruGlobal/gws-cli/releases)** page.
 
-Alternatively, you can use package managers as a convenience layer:
+Or build from source:
 
 ```bash
-npm install -g @googleworkspace/cli    # npm (downloads GitHub release binary)
-cargo install google-workspace-cli     # crates.io
-nix run github:googleworkspace/cli     # nix
+cargo install --git https://github.com/CruGlobal/gws-cli --locked   # cargo
+nix run github:CruGlobal/gws-cli                                    # nix
 ```
+
+> This fork is not published to npm, crates.io, or Homebrew.
 
 ## Quick Start
 
@@ -26,8 +27,8 @@ gws gmail users.messages list --params '{"maxResults": 3}'
 
 ## Documentation
 
-See the [full README](https://github.com/googleworkspace/cli#readme) for authentication setup, helper commands, agent skills, and more.
+See the [full README](https://github.com/CruGlobal/gws-cli#readme) for authentication setup, helper commands, agent skills, and more.
 
 ## License
 
-Apache-2.0 — see [LICENSE](https://github.com/googleworkspace/cli/blob/main/LICENSE).
+Apache-2.0 — see [LICENSE](https://github.com/CruGlobal/gws-cli/blob/main/LICENSE).

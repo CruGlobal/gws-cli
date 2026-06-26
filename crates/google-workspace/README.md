@@ -37,4 +37,4 @@ async fn main() -> anyhow::Result<()> {
 
 ## License
 
-Apache-2.0 — see [LICENSE](https://github.com/googleworkspace/cli/blob/main/LICENSE).
+Apache-2.0 — see [LICENSE](https://github.com/CruGlobal/gws-cli/blob/main/LICENSE).

@@ -14,6 +14,9 @@
 
 name: Release (Changeset)
 
+# Requires the RELEASE_TOKEN repository secret (a fine-grained PAT) so the tag it
+# pushes re-triggers the Release workflow. See docs/FORK_SETUP.md.
+
 on:
   workflow_dispatch:
   push:
@@ -34,7 +37,7 @@ jobs:
     steps:
       - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
         with:
-          token: ${{ secrets.GOOGLEWORKSPACE_BOT_TOKEN }}
+          token: ${{ secrets.RELEASE_TOKEN || github.token }}
 
       - name: Install Rust
         uses: dtolnay/rust-toolchain@631a55b12751854ce901bb631d5902ceb48146f7 # stable
@@ -42,7 +45,7 @@ jobs:
       - name: Install Nix
         uses: cachix/install-nix-action@08dcb3a5e62fa31e2da3d490afc4176ef55ecd72 # v30
         with:
-          github_access_token: ${{ secrets.GOOGLEWORKSPACE_BOT_TOKEN }}
+          github_access_token: ${{ secrets.RELEASE_TOKEN || github.token }}
 
       - uses: pnpm/action-setup@c5ba7f7862a0f64c1b1a05fbac13e0b8e86ba08c # v4
 
@@ -56,8 +59,8 @@ jobs:
         run: pnpm install
 
       - run: |
-          git config --global user.name "googleworkspace-bot"
-          git config --global user.email "googleworkspace-bot@google.com"
+          git config --global user.name "github-actions[bot]"
+          git config --global user.email "41898282+github-actions[bot]@users.noreply.github.com"
 
       - name: Create Release Pull Request or Tag
         id: changesets
@@ -69,4 +72,4 @@ jobs:
           title: 'chore: release versions'
           setupGitUser: false
         env:
-          GITHUB_TOKEN: ${{ secrets.GOOGLEWORKSPACE_BOT_TOKEN }}
+          GITHUB_TOKEN: ${{ secrets.RELEASE_TOKEN || github.token }}

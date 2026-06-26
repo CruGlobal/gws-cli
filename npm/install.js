@@ -18,7 +18,7 @@ const INSTALL_DIR = path.join(__dirname, "bin");
  */
 function getDownloadUrl(artifactName) {
   const { version } = require("./package.json");
-  return `https://github.com/googleworkspace/cli/releases/download/v${version}/${artifactName}`;
+  return `https://github.com/CruGlobal/gws-cli/releases/download/v${version}/${artifactName}`;
 }
 
 /**

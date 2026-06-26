@@ -65,7 +65,7 @@ Every PR must include a changeset file at `.changeset/<descriptive-name>.md`:
 
 ```markdown
 ---
-"@googleworkspace/cli": patch
+"gws-cli": patch
 ---
 
 Brief description of the change

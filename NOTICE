@@ -1,0 +1,17 @@
+gws-cli
+Copyright 2026 Google LLC
+Copyright 2026 Cru
+
+This product includes software originally developed by Google LLC as the
+Google Workspace CLI (https://github.com/googleworkspace/cli), licensed under
+the Apache License, Version 2.0.
+
+This repository (https://github.com/CruGlobal/gws-cli) is a community-maintained
+fork by Cru (https://github.com/CruGlobal). Modifications made for this fork are
+Copyright 2026 Cru and are likewise licensed under the Apache License,
+Version 2.0. Original Google LLC copyright notices are retained in source files.
+
+gws-cli is not affiliated with, endorsed by, or sponsored by Google. "Google",
+"Google Workspace", and related marks are trademarks of Google LLC; any use of
+those marks here is nominative, to describe interoperability with Google
+Workspace APIs.

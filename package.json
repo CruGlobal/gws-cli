@@ -1,30 +1,26 @@
 {
-  "name": "@googleworkspace/cli",
+  "name": "gws-cli",
   "version": "0.22.5",
   "private": true,
-  "description": "Google Workspace CLI — dynamic command surface from Discovery Service",
+  "description": "gws-cli — community-maintained fork of the Google Workspace CLI; dynamic command surface from Discovery Service",
   "license": "Apache-2.0",
   "repository": {
     "type": "git",
-    "url": "https://github.com/googleworkspace/cli.git"
+    "url": "https://github.com/CruGlobal/gws-cli.git"
   },
   "author": {
     "name": "Justin Poehnelt",
     "email": "justin.poehnelt@gmail.com"
   },
-  "homepage": "https://github.com/googleworkspace/cli",
+  "homepage": "https://github.com/CruGlobal/gws-cli",
   "bugs": {
-    "url": "https://github.com/googleworkspace/cli/issues"
+    "url": "https://github.com/CruGlobal/gws-cli/issues"
   },
   "scripts": {
     "test": "cargo test",
     "prepare": "lefthook install",
     "version-sync": "bash scripts/version-sync.sh",
     "tag-release": "bash scripts/tag-release.sh"
-  },
-  "publishConfig": {
-    "provenance": true,
-    "registry": "https://wombat-dressing-room.appspot.com"
   },
   "engines": {
     "node": ">=18"
