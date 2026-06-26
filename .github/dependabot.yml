@@ -1,0 +1,36 @@
+# Dependabot configuration for the gws-cli fork.
+# Keeps Rust crates, GitHub Actions, and Node tooling up to date.
+version: 2
+updates:
+  - package-ecosystem: cargo
+    directory: "/"
+    schedule:
+      interval: weekly
+    open-pull-requests-limit: 10
+    groups:
+      cargo-minor-patch:
+        update-types:
+          - minor
+          - patch
+
+  - package-ecosystem: github-actions
+    directory: "/"
+    schedule:
+      interval: weekly
+    groups:
+      actions:
+        update-types:
+          - minor
+          - patch
+
+  # Root tooling manifest (changesets, lefthook)
+  - package-ecosystem: npm
+    directory: "/"
+    schedule:
+      interval: weekly
+
+  # npm installer shim
+  - package-ecosystem: npm
+    directory: "/npm"
+    schedule:
+      interval: weekly
