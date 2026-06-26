@@ -18,9 +18,8 @@ on:
   schedule:
     - cron: "0 6 * * *" # Daily — keeps skills in sync with Discovery API changes
   workflow_dispatch: # Manual trigger
-  push:
-    branches-ignore:
-      - main # main is kept up to date by PR merges
+  # Note: no push trigger — regeneration runs on the daily cron (or manually) and
+  # opens a sync PR, rather than committing to every contributor branch.
 
 concurrency:
   group: generate-skills-${{ github.ref_name }}
@@ -102,18 +101,3 @@ jobs:
             docs/skills.md
             .changeset/sync-skills.md
           delete-branch: true
-
-      # --- Push events (non-main branches): commit directly ---
-      - name: Commit and push if changed
-        if: >-
-          steps.diff.outputs.changed == 'true' &&
-          github.event_name == 'push'
-        env:
-          GITHUB_TOKEN: ${{ secrets.RELEASE_TOKEN || github.token }}
-        run: |
-          git config user.name  "github-actions[bot]"
-          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-
-          git add skills/ docs/skills.md
-          git commit -m "chore: regenerate skills [skip ci]"
-          git push
