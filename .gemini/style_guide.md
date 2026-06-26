@@ -19,7 +19,7 @@ The `codecov/patch` check requires new/modified lines to be covered by tests. Pr
 
 ## Changesets
 
-Every PR must include a `.changeset/<name>.md` file. The package name **must** be `"@googleworkspace/cli"` (not `"googleworkspace-cli"`). Use `patch` for fixes/chores, `minor` for features, `major` for breaking changes.
+Every PR must include a `.changeset/<name>.md` file. The package name **must** be `"gws-cli"` (not `"googleworkspace-cli"`). Use `patch` for fixes/chores, `minor` for features, `major` for breaking changes.
 
 ## PR Scope
 
