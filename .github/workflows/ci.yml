@@ -348,6 +348,9 @@ jobs:
     needs: build-linux
     if: github.event.pull_request.head.repo.full_name == github.repository || github.event_name != 'pull_request'
     runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      id-token: write
     steps:
       - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
 
@@ -360,20 +363,20 @@ jobs:
       - name: Make binary executable
         run: chmod +x ./bin/gws
 
-      # Live API steps run only when GOOGLE_CREDENTIALS_JSON is set; otherwise
-      # they are skipped (offline checks still run). See #5.
-      - name: Decode credentials
-        id: creds
-        env:
-          GOOGLE_CREDENTIALS_JSON: ${{ secrets.GOOGLE_CREDENTIALS_JSON }}
-        run: |
-          if [ -z "$GOOGLE_CREDENTIALS_JSON" ]; then
-            echo "::warning::GOOGLE_CREDENTIALS_JSON not set — skipping live API smoketests (see #5)"
-            echo "live=false" >> "$GITHUB_OUTPUT"
-          else
-            echo "$GOOGLE_CREDENTIALS_JSON" | base64 -d > /tmp/credentials.json
-            echo "live=true" >> "$GITHUB_OUTPUT"
-          fi
+      # Live API steps authenticate to Google via Workload Identity Federation
+      # (no static key). WORKLOAD_IDENTITY_PROVIDER / GCP_SERVICE_ACCOUNT_EMAIL
+      # are repo variables provisioned by Terraform (applications/gws-cli in
+      # CruGlobal/cru-terraform). They are gated behind RUN_LIVE_SMOKETESTS
+      # because the user-scoped endpoints (Gmail/Calendar/Drive) additionally
+      # require domain-wide delegation + a test user to impersonate; until that
+      # is configured, only the offline checks (--help, schema) run. See #5.
+      - name: Authenticate to Google Cloud
+        id: auth
+        if: vars.RUN_LIVE_SMOKETESTS == 'true'
+        uses: google-github-actions/auth@c200f3691d83b41bf9bbd8638997a462592937ed # v2
+        with:
+          workload_identity_provider: ${{ vars.WORKLOAD_IDENTITY_PROVIDER }}
+          service_account: ${{ vars.GCP_SERVICE_ACCOUNT_EMAIL }}
 
       - name: Smoketest — help
         run: ./bin/gws --help
@@ -382,45 +385,45 @@ jobs:
         run: ./bin/gws schema drive.files.list | jq -e '.httpMethod'
 
       - name: Smoketest — Drive files list
-        if: steps.creds.outputs.live == 'true'
+        if: vars.RUN_LIVE_SMOKETESTS == 'true'
         env:
-          GOOGLE_WORKSPACE_CLI_CREDENTIALS_FILE: /tmp/credentials.json
+          GOOGLE_WORKSPACE_CLI_CREDENTIALS_FILE: ${{ steps.auth.outputs.credentials_file_path }}
         run: |
           ./bin/gws drive files list \
             --params '{"pageSize": 1, "fields": "files(id,mimeType)"}' \
             | jq -e '.files'
 
       - name: Smoketest — Gmail messages
-        if: steps.creds.outputs.live == 'true'
+        if: vars.RUN_LIVE_SMOKETESTS == 'true'
         env:
-          GOOGLE_WORKSPACE_CLI_CREDENTIALS_FILE: /tmp/credentials.json
+          GOOGLE_WORKSPACE_CLI_CREDENTIALS_FILE: ${{ steps.auth.outputs.credentials_file_path }}
         run: |
           ./bin/gws gmail users messages list \
             --params '{"userId": "me", "maxResults": 1, "fields": "messages(id)"}' \
             | jq -e '.messages'
 
       - name: Smoketest — Calendar events
-        if: steps.creds.outputs.live == 'true'
+        if: vars.RUN_LIVE_SMOKETESTS == 'true'
         env:
-          GOOGLE_WORKSPACE_CLI_CREDENTIALS_FILE: /tmp/credentials.json
+          GOOGLE_WORKSPACE_CLI_CREDENTIALS_FILE: ${{ steps.auth.outputs.credentials_file_path }}
         run: |
           ./bin/gws calendar events list \
             --params '{"calendarId": "primary", "maxResults": 1, "fields": "kind,items(id,status)"}' \
             | jq -e '.kind'
 
       - name: Smoketest — Slides presentation
-        if: steps.creds.outputs.live == 'true'
+        if: vars.RUN_LIVE_SMOKETESTS == 'true'
         env:
-          GOOGLE_WORKSPACE_CLI_CREDENTIALS_FILE: /tmp/credentials.json
+          GOOGLE_WORKSPACE_CLI_CREDENTIALS_FILE: ${{ steps.auth.outputs.credentials_file_path }}
         run: |
           ./bin/gws slides presentations get \
             --params '{"presentationId": "1knOKD_87JWE4qsEbO4r5O91IxTER5ybBBhOJgZ1yLFI", "fields": "presentationId,slides(objectId)"}' \
             | jq -e '.presentationId'
 
       - name: Smoketest — pagination
-        if: steps.creds.outputs.live == 'true'
+        if: vars.RUN_LIVE_SMOKETESTS == 'true'
         env:
-          GOOGLE_WORKSPACE_CLI_CREDENTIALS_FILE: /tmp/credentials.json
+          GOOGLE_WORKSPACE_CLI_CREDENTIALS_FILE: ${{ steps.auth.outputs.credentials_file_path }}
         run: |
           LINES=$(./bin/gws drive files list \
             --params '{"pageSize": 1, "fields": "nextPageToken,files(id)"}' \
@@ -437,7 +440,3 @@ jobs:
             echo "::error::Expected exit code 1 for unknown service"
             exit 1
           fi
-
-      - name: Cleanup credentials
-        if: always()
-        run: rm -f /tmp/credentials.json
