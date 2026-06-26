@@ -2,7 +2,7 @@
 name: gws-drive
 description: "Google Drive: Manage files, folders, and shared drives."
 metadata:
-  version: 0.22.5
+  version: 0.23.0
   openclaw:
     category: "productivity"
     requires:
