@@ -1,5 +1,5 @@
 {
-  description = "Google Workspace CLI — dynamic command surface from Discovery Service";
+  description = "gws-cli — community-maintained fork of the Google Workspace CLI; dynamic command surface from Discovery Service";
 
   inputs = {
     nixpkgs.url = "github:NixOS/nixpkgs/nixos-unstable";

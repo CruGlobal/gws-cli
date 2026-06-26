@@ -505,8 +505,8 @@ fn print_usage() {
     }
     println!();
     println!("COMMUNITY:");
-    println!("    Star the repo: https://github.com/googleworkspace/cli");
-    println!("    Report bugs / request features: https://github.com/googleworkspace/cli/issues");
+    println!("    Star the repo: https://github.com/CruGlobal/gws-cli");
+    println!("    Report bugs / request features: https://github.com/CruGlobal/gws-cli/issues");
     println!("    Please search existing issues first; if one already exists, comment there.");
     println!();
     println!("DISCLAIMER:");

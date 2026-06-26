@@ -14,9 +14,9 @@
           ║                                                ║
           ╚════════════════════════════════════════════════╝
         
-                  ⭐ github.com/googleworkspace/cli
+                  ⭐ github.com/CruGlobal/gws-cli
         
-                    npm i -g @googleworkspace/cli
+                 nix run github:CruGlobal/gws-cli
         
                   ────────────────────────────────
                          Built with Rust. 🦀
