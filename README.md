@@ -4,22 +4,20 @@
 Drive, Gmail, Calendar, and every Workspace API. Zero boilerplate. Structured JSON output. 40+ agent skills included.
 
 > [!NOTE]
-> This is **not** an officially supported Google product.
+> **Community-maintained fork.** This is a fork of [`googleworkspace/cli`](https://github.com/googleworkspace/cli), which is no longer maintained upstream (last release April 2026). It is maintained by [Cru](https://github.com/CruGlobal) on a best-effort, internal-first basis — see [Maintenance status](#maintenance-status). **Not affiliated with, endorsed by, or sponsored by Google.**
 
 <p>
-  <a href="https://www.npmjs.com/package/@googleworkspace/cli"><img src="https://img.shields.io/npm/v/@googleworkspace/cli" alt="npm version"></a>
-  <a href="https://github.com/googleworkspace/cli/blob/main/LICENSE"><img src="https://img.shields.io/github/license/googleworkspace/cli" alt="license"></a>
-  <a href="https://github.com/googleworkspace/cli/actions/workflows/ci.yml"><img src="https://img.shields.io/github/actions/workflow/status/googleworkspace/cli/ci.yml?branch=main&label=CI" alt="CI status"></a>
-  <a href="https://www.npmjs.com/package/@googleworkspace/cli"><img src="https://img.shields.io/npm/unpacked-size/@googleworkspace/cli" alt="install size"></a>
+  <a href="https://github.com/CruGlobal/gws-cli/blob/main/LICENSE"><img src="https://img.shields.io/github/license/CruGlobal/gws-cli" alt="license"></a>
+  <a href="https://github.com/CruGlobal/gws-cli/actions/workflows/ci.yml"><img src="https://img.shields.io/github/actions/workflow/status/CruGlobal/gws-cli/ci.yml?branch=main&label=CI" alt="CI status"></a>
 </p>
 <br>
 
-⬇️ **[Download the latest release for your OS](https://github.com/googleworkspace/cli/releases)**
+⬇️ **[Download the latest release for your OS](https://github.com/CruGlobal/gws-cli/releases)**
 
 `gws` doesn't ship a static list of commands. It reads Google's own [Discovery Service](https://developers.google.com/discovery) at runtime and builds its entire command surface dynamically. When Google Workspace adds an API endpoint or method, `gws` picks it up automatically.
 
 > [!IMPORTANT]
-> This project is under active development. Expect breaking changes as we march toward v1.0.
+> Inherited from upstream while pre-1.0: expect breaking changes. See [Maintenance status](#maintenance-status) for what Cru does and doesn't commit to.
 
 ## Contents
 
@@ -35,40 +33,32 @@ Drive, Gmail, Calendar, and every Workspace API. Zero boilerplate. Structured JS
 - [Architecture](#architecture)
 - [Troubleshooting](#troubleshooting)
 - [Development](#development)
+- [Maintenance status](#maintenance-status)
 
 ## Prerequisites
 
-- **Node.js 18+** — for `npm install` (or download a pre-built binary from [GitHub Releases](https://github.com/googleworkspace/cli/releases))
 - **A Google Cloud project** — required for OAuth credentials. You can create one via the [Google Cloud Console](https://console.cloud.google.com/) or with the [`gcloud` CLI](https://cloud.google.com/sdk/docs/install) or with the `gws auth setup` command.
 - **A Google account** with access to Google Workspace
+- **Rust toolchain** — only if building from source
 
 ## Installation
 
-The recommended way to install `gws` is to download the pre-built binary for your OS and architecture from the **[GitHub Releases](https://github.com/googleworkspace/cli/releases)** page. Extract the archive and place the `gws` binary in your `$PATH`.
+The recommended way to install `gws` is to download the pre-built binary for your OS and architecture from the **[GitHub Releases](https://github.com/CruGlobal/gws-cli/releases)** page. Extract the archive and place the `gws` binary in your `$PATH`.
 
-For convenience, you can also use `npm` to automate downloading the appropriate binary from GitHub Releases:
-
-```bash
-npm install -g @googleworkspace/cli
-```
-
-Or build from source:
+Build from source with cargo:
 
 ```bash
-cargo install --git https://github.com/googleworkspace/cli --locked
+cargo install --git https://github.com/CruGlobal/gws-cli --locked
 ```
 
-A Nix flake is also available at `github:googleworkspace/cli`
+A Nix flake is also available:
 
 ```bash
-nix run github:googleworkspace/cli
+nix run github:CruGlobal/gws-cli
 ```
 
-On macOS and Linux, you can also install via [Homebrew](https://brew.sh/):
-
-```bash
-brew install googleworkspace-cli
-```
+> [!NOTE]
+> This fork is not published to npm, crates.io, or Homebrew. Use a release binary, `cargo install --git`, or the Nix flake.
 
 ## Quick Start
 
@@ -221,11 +211,11 @@ The repo ships 100+ Agent Skills (`SKILL.md` files) — one for every supported 
 
 ```bash
 # Install all skills at once
-npx skills add https://github.com/googleworkspace/cli
+npx skills add https://github.com/CruGlobal/gws-cli
 
 # Or pick only what you need
-npx skills add https://github.com/googleworkspace/cli/tree/main/skills/gws-drive
-npx skills add https://github.com/googleworkspace/cli/tree/main/skills/gws-gmail
+npx skills add https://github.com/CruGlobal/gws-cli/tree/main/skills/gws-drive
+npx skills add https://github.com/CruGlobal/gws-cli/tree/main/skills/gws-gmail
 ```
 
 <details>
@@ -253,7 +243,7 @@ The `gws-shared` skill includes an `install` block so OpenClaw auto-installs the
 
 2. Install the extension into the Gemini CLI:
    ```bash
-   gemini extensions install https://github.com/googleworkspace/cli
+   gemini extensions install https://github.com/CruGlobal/gws-cli
    ```
 
 Installing this extension gives your Gemini CLI agent direct access to all `gws` commands and Google Workspace agent skills. Because `gws` handles its own authentication securely, you simply need to authenticate your terminal once prior to using the agent, and the extension will automatically inherit your credentials.
@@ -500,11 +490,22 @@ cargo test                        # unit tests
 ./scripts/coverage.sh             # HTML coverage report → target/llvm-cov/html/
 ```
 
+## Maintenance status
+
+This is a community-maintained fork of [`googleworkspace/cli`](https://github.com/googleworkspace/cli), maintained by [Cru](https://github.com/CruGlobal) primarily for our own use. We publish it openly so our changes are available to others, but:
+
+- **Best-effort, no SLA.** Fixes are prioritized over features; we merge what we have time for.
+- **Internal-first.** Changes are driven by what Cru needs; we may not adopt every feature request.
+- **Issues and PRs are welcome**, but triage may be slow. Bug-fix PRs are far more likely to land than large features.
+- The CLI auto-updates its command surface from Google's Discovery Service at runtime, so it keeps working as Workspace APIs change without code changes here.
+
+If a more active community successor emerges, we may converge on it.
+
 ## License
 
-Apache-2.0
+Apache-2.0. This is a fork of the original [`googleworkspace/cli`](https://github.com/googleworkspace/cli) by Google LLC. Upstream copyright and license notices are retained; see [`LICENSE`](./LICENSE) and [`NOTICE`](./NOTICE).
 
 ## Disclaimer
 
 > [!CAUTION]
-> This is **not** an officially supported Google product.
+> This project is **not** affiliated with, endorsed by, or sponsored by Google, and is **not** an officially supported Google product. "Google", "Google Workspace", and related marks are trademarks of Google LLC.
