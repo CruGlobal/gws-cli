@@ -1,5 +1,15 @@
 # @googleworkspace/cli
 
+## 0.23.0
+
+### Minor Changes
+
+- a3768d0: Add `--range` flag to `sheets +append` for targeting specific sheet tabs
+
+### Patch Changes
+
+- 498d125: Fork to CruGlobal/gws-cli: rebrand and repoint URLs, rework the release pipeline (GitHub Releases only — no npm/crates.io publish; `gws-*` release assets; Cru release token), remove Google-only CI (CLA, Gemini review, ClawHub skills publishing, Codecov), throttle the skill-sync cron to daily, and add Dependabot.
+
 ## 0.22.5
 
 ### Patch Changes
