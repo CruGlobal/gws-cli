@@ -23,14 +23,16 @@ updates:
           - minor
           - patch
 
-  # Root tooling manifest (changesets, lefthook)
+  # Root tooling manifest (changesets, lefthook).
+  # Daily so transitive security fixes (cleared by in-range bumps of these
+  # devDeps) land within a day; patch/minor auto-merge. See dependabot-automerge.yml.
   - package-ecosystem: npm
     directory: "/"
     schedule:
-      interval: weekly
+      interval: daily
 
   # npm installer shim
   - package-ecosystem: npm
     directory: "/npm"
     schedule:
-      interval: weekly
+      interval: daily
