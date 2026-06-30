@@ -29,8 +29,8 @@ jobs:
         with:
           days-before-issue-stale: -1
           days-before-issue-close: -1
-          days-before-pr-stale: 3
+          days-before-pr-stale: 120
           days-before-pr-close: 0
-          stale-pr-message: 'This PR has been inactive for 72 hours. Closing to keep the queue clean.'
-          close-pr-message: 'This PR was closed because it has been stalled for 72 hours. Feel free to magically reopen it if you want to continue working on it!'
+          stale-pr-message: 'This PR has been inactive for 120 days. Closing to keep the queue clean.'
+          close-pr-message: 'This PR was closed because it has been stalled for 120 days. Feel free to magically reopen it if you want to continue working on it!'
           exempt-pr-labels: 'keep-alive'
