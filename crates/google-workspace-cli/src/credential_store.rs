@@ -482,12 +482,15 @@ mod tests {
         PlatformError,
     }
 
+    /// Callback invoked by the mock whenever `set_password` is called.
+    type OnSetCallback = Box<dyn FnMut(&str)>;
+
     /// Mock keyring for testing `resolve_key()` without OS dependencies.
     struct MockKeyring {
         get_state: MockState,
         set_succeeds: bool,
         last_set: RefCell<Option<String>>,
-        on_set: RefCell<Option<Box<dyn FnMut(&str)>>>,
+        on_set: RefCell<Option<OnSetCallback>>,
     }
 
     impl MockKeyring {
