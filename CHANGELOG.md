@@ -1,5 +1,12 @@
 # @googleworkspace/cli
 
+## 0.23.1
+
+### Patch Changes
+
+- 1270109: Fix clippy findings across the workspace and unpin the Lint job from Rust 1.93.1 so it tracks stable again. Clippy now runs with `--all-targets` to cover test code.
+- 9767cb8: Re-enable the Security Audit (`cargo audit`) and Cargo Deny gates by removing their `continue-on-error`. The RUSTSEC advisories that prompted the temporary bypass (e.g. RUSTSEC-2026-0097 against rand 0.9.2) were already resolved on main by dependency bumps, so both gates now pass with no ignores required. Also refreshes transitive deps via `cargo update`.
+
 ## 0.23.0
 
 ### Minor Changes
