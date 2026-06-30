@@ -42,6 +42,4 @@ jobs:
           tool: cargo-audit
 
       - name: Run cargo audit
-        # Non-blocking until aged-dep advisories are resolved. See #4.
-        continue-on-error: true
         run: cargo audit
