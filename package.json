@@ -47,7 +47,7 @@
     "rust"
   ],
   "devDependencies": {
-    "@changesets/cli": "^2.29.8",
-    "lefthook": "^2.1.2"
+    "@changesets/cli": "^2.31.0",
+    "lefthook": "^2.1.9"
   }
 }
