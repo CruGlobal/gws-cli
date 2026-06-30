@@ -36,6 +36,43 @@ variables → Actions). Used by `release-changesets.yml` and `generate-skills.ym
 > tying releases to one person's PAT — switch to it if this becomes a bus-factor
 > concern.
 
+## CI smoketest credentials (`GOOGLE_CREDENTIALS_JSON`)
+
+The **API Smoketest** job in `ci.yml` runs live Drive/Gmail/Calendar/Slides/pagination
+checks. They are **skipped** when the `GOOGLE_CREDENTIALS_JSON` secret is absent
+(offline `--help`/schema checks still run). To enable them:
+
+1. **Dedicated test account.** Create a normal Workspace user in a *test* domain
+   (no admin role needed — the checks only touch `me`/`primary` resources). With
+   Gmail, Calendar, and Drive enabled for its OU.
+2. **OAuth client.** `gws auth setup` creates the client in a GCP project and
+   enables the APIs. Note which **project** it uses.
+3. **Grant the bot `roles/serviceusage.serviceUsageConsumer` on that GCP
+   project** — otherwise every call 403s with *"Caller does not have permission
+   to use project …"* (user tokens bill quota to the OAuth client's project, and
+   the bot isn't a member of it):
+   ```
+   gcloud projects add-iam-policy-binding <PROJECT> \
+     --member="user:<bot>@<test-domain>" \
+     --role="roles/serviceusage.serviceUsageConsumer"
+   ```
+4. **Log in read-only** as the bot: `gws auth login --readonly` (readonly scopes
+   cover every smoketest call). Consent as the bot in the browser.
+5. **Seed ≥2 Drive files** in the bot account — the pagination check pages at
+   `pageSize:1` and asserts ≥2 pages, so a fresh empty Drive fails it. (Needs a
+   one-time write-scoped login, e.g. `gws auth login --scopes .../auth/drive`,
+   then `gws drive files create --json '{"name":"…","mimeType":"application/vnd.google-apps.folder"}'`.)
+6. **Set the secret** (base64 of the exported `authorized_user` JSON — the CI job
+   decodes it):
+   ```
+   gws auth export --unmasked | base64 | gh secret set GOOGLE_CREDENTIALS_JSON -R <org>/gws-cli
+   ```
+
+> **Token durability:** create the OAuth client in a GCP project **in the test
+> domain's org with an Internal consent screen** so the refresh token doesn't
+> expire. An *External + Testing* client issues tokens that die after 7 days,
+> breaking CI weekly. Rotate by repeating steps 4 and 6.
+
 ## Branch protection
 
 If you require status checks on `main`, only require checks that actually run in
