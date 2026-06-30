@@ -441,3 +441,34 @@ jobs:
       - name: Cleanup credentials
         if: always()
         run: rm -f /tmp/credentials.json
+
+  # Single required status check for branch protection. Aggregates every job
+  # above so a path-filtered PR (e.g. a lockfile-only Dependabot bump that
+  # skips all Rust jobs) still reports one settled check, while any real
+  # failure/cancellation blocks the merge. Skipped jobs count as OK.
+  ci-gate:
+    name: CI Gate
+    needs:
+      - changes
+      - test
+      - nix
+      - lint
+      - deny
+      - skills
+      - lint-skills
+      - build-linux
+      - build
+      - smoketest
+    if: always()
+    runs-on: ubuntu-latest
+    steps:
+      - name: Verify no job failed or was cancelled
+        env:
+          RESULTS: ${{ join(needs.*.result, ',') }}
+        run: |
+          echo "Job results: $RESULTS"
+          if echo "$RESULTS" | tr ',' '\n' | grep -qE '^(failure|cancelled)$'; then
+            echo "::error::One or more CI jobs failed or were cancelled."
+            exit 1
+          fi
+          echo "All CI jobs passed or were skipped."
