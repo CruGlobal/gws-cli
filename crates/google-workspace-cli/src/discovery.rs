@@ -19,15 +19,30 @@
 
 pub use google_workspace::discovery::*;
 
+/// Env var overriding where discovery documents (and thus all API traffic, since
+/// the CLI is discovery-driven) are fetched from. When set, discovery is fetched
+/// from `{base}/discovery/v1/apis/{service}/{version}/rest` instead of Google.
+const ENV_DISCOVERY_BASE_URL: &str = "GOOGLE_WORKSPACE_CLI_DISCOVERY_BASE_URL";
+
 /// Fetches and caches a Google Discovery Document using the CLI's config directory.
 ///
 /// This is a convenience wrapper around
 /// [`google_workspace::discovery::fetch_discovery_document`] that automatically
-/// uses the CLI's cache directory (`~/.config/gws/cache/`).
+/// uses the CLI's cache directory (`~/.config/gws/cache/`) and honors the
+/// `GOOGLE_WORKSPACE_CLI_DISCOVERY_BASE_URL` proxy override.
 pub async fn fetch_discovery_document(
     service: &str,
     version: &str,
 ) -> anyhow::Result<RestDescription> {
     let cache_dir = crate::auth_commands::config_dir().join("cache");
-    google_workspace::discovery::fetch_discovery_document(service, version, Some(&cache_dir)).await
+    let base_url = std::env::var(ENV_DISCOVERY_BASE_URL)
+        .ok()
+        .filter(|value| !value.trim().is_empty());
+    google_workspace::discovery::fetch_discovery_document(
+        service,
+        version,
+        Some(&cache_dir),
+        base_url.as_deref(),
+    )
+    .await
 }
