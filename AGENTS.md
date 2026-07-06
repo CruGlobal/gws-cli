@@ -208,6 +208,7 @@ See [`src/helpers/README.md`](crates/google-workspace-cli/src/helpers/README.md)
 | Variable | Description |
 |---|---|
 | `GOOGLE_WORKSPACE_CLI_CONFIG_DIR` | Override the config directory (default: `~/.config/gws`) |
+| `GOOGLE_WORKSPACE_CLI_DISCOVERY_BASE_URL` | Base URL for fetching discovery documents (e.g. a proxy). When set, discovery is fetched from `{base}/discovery/v1/apis/{service}/{version}/rest`, the per-service `$discovery/rest` fallback is skipped, and the discovery cache is namespaced by base URL. Since the CLI is discovery-driven, this redirects all API traffic through the given base. |
 
 ### OAuth Client
 
