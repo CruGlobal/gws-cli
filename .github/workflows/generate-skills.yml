@@ -82,6 +82,7 @@ jobs:
           EOF
 
       - name: Create or update sync PR
+        id: cpr
         if: >-
           steps.diff.outputs.changed == 'true' &&
           (github.event_name == 'schedule' || github.event_name == 'workflow_dispatch')
@@ -101,3 +102,12 @@ jobs:
             docs/skills.md
             .changeset/sync-skills.md
           delete-branch: true
+
+      # The skill-sync PR is fully generated and deterministic — auto-merge it
+      # once CI Gate passes, like Dependabot patch/minor bumps. No Claude review.
+      - name: Enable auto-merge for the sync PR
+        if: steps.cpr.outputs.pull-request-number != ''
+        env:
+          GH_TOKEN: ${{ secrets.RELEASE_TOKEN || github.token }}
+          PR: ${{ steps.cpr.outputs.pull-request-number }}
+        run: gh pr merge --auto --squash "$PR"

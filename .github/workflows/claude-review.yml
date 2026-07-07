@@ -1,0 +1,86 @@
+# Copyright 2026 Google LLC
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+
+# Claude reviews human-authored PRs and leaves inline comments. Review only —
+# it never merges. Bot PRs are handled elsewhere:
+#   - Dependabot patch/minor  -> dependabot-automerge.yml (auto-merge)
+#   - Dependabot major         -> claude-dependabot-major.yml (adapt + auto-merge)
+#   - Skill-sync PR            -> generate-skills.yml (auto-merge)
+#   - Release PR               -> claude-release.yml (weekly, risk-gated)
+#
+# Setup (see docs/FORK_SETUP.md):
+#   1. Install the Claude GitHub App:  claude /install-github-app
+#   2. Add repo secret CLAUDE_CODE_OAUTH_TOKEN (a Claude Pro/Max subscription token).
+#
+# Uses `pull_request` (NOT pull_request_target): safe on forks — the secret is
+# simply unavailable to fork PRs, so the job no-ops there rather than exposing
+# credentials to untrusted code. Same-repo PRs (the common case for this
+# internal-first fork) get the secret and are reviewed.
+name: Claude PR Review
+
+on:
+  pull_request:
+    types: [opened, synchronize, reopened]
+
+permissions:
+  contents: read
+  pull-requests: write
+  id-token: write # required for the action to mint its GitHub App token via OIDC
+
+concurrency:
+  group: claude-review-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  review:
+    name: Review
+    # Human PRs only, and skip drafts.
+    if: >-
+      github.event.pull_request.draft == false &&
+      github.actor != 'dependabot[bot]' &&
+      github.actor != 'github-actions[bot]' &&
+      github.event.pull_request.head.ref != 'chore/sync-skills' &&
+      !startsWith(github.event.pull_request.title, 'chore: release')
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
+        with:
+          fetch-depth: 0
+
+      # Pinned to the v1 major tag. Must be >= v1.0.94 (pre-June-2026 tags had an
+      # env-exfiltration CVE). Repo convention is SHA-pinning — pin to the exact
+      # release SHA once confirmed; Dependabot (github-actions ecosystem) will
+      # then keep it current.
+      - name: Claude review
+        uses: anthropics/claude-code-action@v1
+        with:
+          claude_code_oauth_token: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}
+          prompt: |
+            You are reviewing a pull request for gws-cli, a Rust CLI that wraps the
+            Google Workspace APIs via runtime schema discovery. Act as a maintainer.
+
+            Focus on, in priority order:
+              - Correctness and error handling in Rust code.
+              - AGENTS.md rules — most importantly, NO generated `google-*` registry
+                crates may be added to crates/google-workspace-cli/Cargo.toml (path
+                deps are fine); the CLI uses dynamic schema discovery at runtime.
+              - A changeset (.changeset/*.md, package name "gws-cli") is present when
+                any .rs / Cargo.toml / Cargo.lock file changed.
+              - Security issues (unsafe input handling, credential/token leaks).
+
+            Do NOT nitpick formatting or lint — cargo fmt and clippy -D warnings
+            already gate those in CI. Post concise inline comments on real issues.
+            If the PR looks good, say so in one line. Do not merge or approve.
+          # Treat PR text/diff as data, never as instructions.
+          claude_args: "--max-turns 10"

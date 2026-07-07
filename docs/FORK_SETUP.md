@@ -36,6 +36,22 @@ variables → Actions). Used by `release-changesets.yml` and `generate-skills.ym
 > tying releases to one person's PAT — switch to it if this becomes a bus-factor
 > concern.
 
+## Claude PR automation
+
+Claude Code reviews PRs, adapts to major dependency bumps, and gates the weekly
+release (see [PR automation](#pr-automation-claude-code) below). This needs:
+
+1. **Install the Claude GitHub App** — from a maintainer's terminal, run
+   `claude /install-github-app` and select this repo.
+2. **Add the secret `CLAUDE_CODE_OAUTH_TOKEN`** — a Claude Pro/Max subscription
+   token (Settings → Secrets and variables → Actions). Usage bills to that
+   subscription. An `ANTHROPIC_API_KEY` secret works instead if you'd rather bill
+   the API; swap the `claude_code_oauth_token:` input for `anthropic_api_key:`.
+
+> The Claude workflows pin `anthropics/claude-code-action@v1`. Keep it at
+> **≥ v1.0.94** (pre-June-2026 tags had an env-exfiltration CVE). Repo convention
+> is SHA-pinning — pin to the exact release SHA once confirmed.
+
 ## CI smoketest credentials (`GOOGLE_CREDENTIALS_JSON`)
 
 The **API Smoketest** job in `ci.yml` runs live Drive/Gmail/Calendar/Slides/pagination
@@ -94,6 +110,34 @@ merges.
 
 This fork does **not** publish to npm, crates.io, or Homebrew. Distribution is
 via GitHub Release binaries, `cargo install --git`, or the Nix flake.
+
+## PR automation (Claude Code)
+
+How each kind of PR reaches `main` (all merges gate on the required `CI Gate`
+check — nothing merges on red CI):
+
+| PR | Workflow | Behavior |
+| --- | --- | --- |
+| Dependabot patch/minor | `dependabot-automerge.yml` | Auto-merge, no review |
+| Dependabot **major** | `claude-dependabot-major.yml` | Claude reads the changelog, adapts our code to breaking changes, verifies (`build`/`test`/`clippy`), pushes the fix, and enables auto-merge if confident; otherwise holds for a human |
+| Skill-sync (`chore/sync-skills`) | `generate-skills.yml` | Auto-merge, no review |
+| Release (`chore: release versions`) | `claude-release.yml` | Weekly (Mon 14:00 UTC): Claude assesses risk and auto-merges low-risk releases, else labels `needs-release-review` |
+| Human-authored | `claude-review.yml` | Claude posts inline review comments; a human merges |
+
+Security notes:
+
+- `claude-review.yml` uses `pull_request` (safe on forks — the token is absent
+  there, so it no-ops rather than exposing secrets to untrusted code).
+- `claude-dependabot-major.yml` uses `pull_request_target` because Dependabot
+  `pull_request` runs get a read-only token and no secrets. To adapt, Claude
+  compiles the upgraded crate — which runs that crate's build scripts in a job
+  holding `CLAUDE_CODE_OAUTH_TOKEN`. This is an accepted trade-off; `RELEASE_TOKEN`
+  is deliberately kept out of that job, and every merge is still gated on
+  `CI Gate`. Rotate `CLAUDE_CODE_OAUTH_TOKEN` if a bad dependency is suspected.
+- `claude-release.yml` splits the model (risk assessment) and the privileged merge
+  (`RELEASE_TOKEN`) into separate jobs, so the release token never sits in the job
+  that runs Claude. The merge uses `RELEASE_TOKEN` so the push re-triggers the
+  release chain (a `GITHUB_TOKEN` merge would not).
 
 ## Skills
 
