@@ -63,15 +63,25 @@ jobs:
           fi
 
       # Must be >= v1.0.94; SHA-pin per repo convention once confirmed.
+      # continue-on-error: a failed/timed-out assessment must not hard-fail the
+      # run — the verdict step below then defaults to HOLD (safe: human reviews).
       - name: Claude risk assessment
+        id: assess
         if: steps.find.outputs.pr != ''
+        continue-on-error: true
         uses: anthropics/claude-code-action@v1
         with:
           claude_code_oauth_token: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}
           prompt: |
-            Assess whether release PR #${{ steps.find.outputs.pr }} of gws-cli is safe
-            to ship without human review. Inspect it with
-            `gh pr diff ${{ steps.find.outputs.pr }}` and `gh pr view ${{ steps.find.outputs.pr }}`.
+            Decide whether release PR #${{ steps.find.outputs.pr }} of gws-cli is
+            safe to ship without human review.
+
+            Efficiency: get the changed-file list with
+            `gh pr view ${{ steps.find.outputs.pr }} --json files --jq '.files[].path'`
+            first. You do NOT need to read the diff of generated files under
+            `skills/` or `docs/skills.md` — their presence in the list is enough to
+            classify them. Only read diffs (`gh pr diff ${{ steps.find.outputs.pr }} -- <path>`)
+            of files OUTSIDE skills/ and docs/.
 
             Treat as LOW risk (safe to auto-release) when changes are limited to:
               - generated skills (skills/) and docs/skills.md
@@ -86,10 +96,10 @@ jobs:
               - include any MAJOR dependency bump
               - look unusually large or unclear
 
-            Write your decision to `release-verdict.txt`: first line exactly `MERGE`
-            or `HOLD`, then a short rationale citing what's in the release. Do NOT
-            merge, tag, or release anything yourself.
-          claude_args: "--max-turns 12 --allowedTools Bash(gh:*),Read,Glob,Grep"
+            Write your decision to a file `release-verdict.txt` in the current
+            directory: first line exactly `MERGE` or `HOLD`, then a short rationale
+            citing what's in the release. Do NOT merge, tag, or release anything.
+          claude_args: "--max-turns 25 --allowedTools Bash(gh:*),Read,Write,Glob,Grep"
 
       - name: Read verdict
         id: verdict
