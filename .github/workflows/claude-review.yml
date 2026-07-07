@@ -58,12 +58,10 @@ jobs:
         with:
           fetch-depth: 0
 
-      # Pinned to the v1 major tag. Must be >= v1.0.94 (pre-June-2026 tags had an
-      # env-exfiltration CVE). Repo convention is SHA-pinning — pin to the exact
-      # release SHA once confirmed; Dependabot (github-actions ecosystem) will
-      # then keep it current.
+      # Pinned to a release commit (>= v1.0.94 for the env-exfiltration CVE fix).
+      # Dependabot (github-actions ecosystem) keeps it current.
       - name: Claude review
-        uses: anthropics/claude-code-action@v1
+        uses: anthropics/claude-code-action@0fe28cdb64e23015219b0e478100b7105fd7dfa1 # v1.0.167
         with:
           claude_code_oauth_token: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}
           prompt: |
