@@ -2,7 +2,7 @@
 name: gws-workflow-weekly-digest
 description: "Google Workflow: Weekly summary: this week's meetings + unread email count."
 metadata:
-  version: 0.23.1
+  version: 0.23.2
   openclaw:
     category: "productivity"
     requires:
