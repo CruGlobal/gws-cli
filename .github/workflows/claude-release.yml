@@ -1,0 +1,153 @@
+# Copyright 2026 Google LLC
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+
+# Weekly automated release. release-changesets.yml keeps a standing
+# "chore: release versions" PR up to date on every push to main. Each week Claude
+# assesses that PR's risk and either merges it (which triggers the tag + Release)
+# or holds it for a human. Merge uses RELEASE_TOKEN so the resulting push
+# re-triggers release-changesets.yml -> tag-release -> release.yml (a GITHUB_TOKEN
+# merge would NOT re-trigger those workflows).
+#
+# The risk assessment (Claude) and the privileged merge (a plain step holding
+# RELEASE_TOKEN) run in SEPARATE jobs so the release token is never present in the
+# job that runs the model.
+name: Claude Weekly Release
+
+on:
+  schedule:
+    - cron: '0 14 * * 1' # Mondays 14:00 UTC
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  pull-requests: write
+
+jobs:
+  assess:
+    name: Assess release risk
+    runs-on: ubuntu-latest
+    outputs:
+      pr: ${{ steps.find.outputs.pr }}
+      verdict: ${{ steps.verdict.outputs.verdict }}
+    steps:
+      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
+        with:
+          fetch-depth: 0
+
+      - name: Find pending release PR
+        id: find
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          set -euo pipefail
+          pr=$(gh pr list --state open --search 'chore: release versions in:title' \
+                 --json number --jq '.[0].number // empty')
+          if [ -z "$pr" ]; then
+            echo "No pending release PR — nothing to release this week."
+            echo "pr=" >> "$GITHUB_OUTPUT"
+          else
+            echo "Pending release PR: #$pr"
+            echo "pr=$pr" >> "$GITHUB_OUTPUT"
+          fi
+
+      # Must be >= v1.0.94; SHA-pin per repo convention once confirmed.
+      - name: Claude risk assessment
+        if: steps.find.outputs.pr != ''
+        uses: anthropics/claude-code-action@v1
+        with:
+          claude_code_oauth_token: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}
+          prompt: |
+            Assess whether release PR #${{ steps.find.outputs.pr }} of gws-cli is safe
+            to ship without human review. Inspect it with
+            `gh pr diff ${{ steps.find.outputs.pr }}` and `gh pr view ${{ steps.find.outputs.pr }}`.
+
+            Treat as LOW risk (safe to auto-release) when changes are limited to:
+              - generated skills (skills/) and docs/skills.md
+              - documentation
+              - dependency patch/minor bumps
+              - version bumps and CHANGELOG entries
+
+            Treat as HIGHER risk (hold for a human) when changes:
+              - touch core crate source, especially crates/google-workspace-cli/src/
+                executor.rs, discovery.rs, auth.rs, schema.rs, commands.rs, main.rs
+              - change CLI behavior, flags, or output format
+              - include any MAJOR dependency bump
+              - look unusually large or unclear
+
+            Write your decision to `release-verdict.txt`: first line exactly `MERGE`
+            or `HOLD`, then a short rationale citing what's in the release. Do NOT
+            merge, tag, or release anything yourself.
+          claude_args: "--max-turns 12 --allowedTools Bash(gh:*),Read,Glob,Grep"
+
+      - name: Read verdict
+        id: verdict
+        if: steps.find.outputs.pr != ''
+        run: |
+          set -euo pipefail
+          if [ ! -f release-verdict.txt ]; then
+            echo "::warning::No verdict produced; defaulting to HOLD."
+            echo "verdict=HOLD" >> "$GITHUB_OUTPUT"
+          else
+            v=$(head -n1 release-verdict.txt | tr -d '[:space:]')
+            [ "$v" = "MERGE" ] || v=HOLD
+            echo "verdict=$v" >> "$GITHUB_OUTPUT"
+          fi
+          # Stash the rationale for the acting job.
+          cp release-verdict.txt "$RUNNER_TEMP/verdict.txt" 2>/dev/null || echo "no rationale" > "$RUNNER_TEMP/verdict.txt"
+
+      - name: Upload verdict
+        if: steps.find.outputs.pr != ''
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: release-verdict
+          path: release-verdict.txt
+          if-no-files-found: ignore
+          retention-days: 1
+
+  act:
+    name: Merge or hold
+    needs: assess
+    if: needs.assess.outputs.pr != ''
+    runs-on: ubuntu-latest
+    steps:
+      - name: Download verdict
+        uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4
+        with:
+          name: release-verdict
+          path: .
+        continue-on-error: true
+
+      - name: Act
+        env:
+          # RELEASE_TOKEN so the merge's push re-triggers the release workflows.
+          GH_TOKEN: ${{ secrets.RELEASE_TOKEN }}
+          PR: ${{ needs.assess.outputs.pr }}
+          VERDICT: ${{ needs.assess.outputs.verdict }}
+        run: |
+          set -euo pipefail
+          body=$(cat release-verdict.txt 2>/dev/null || echo "(no rationale captured)")
+          if [ "$VERDICT" = "MERGE" ]; then
+            gh pr comment "$PR" --body "🤖 Claude weekly release: assessed LOW risk — enabling auto-merge to cut the release (gated on CI Gate).
+
+          $body"
+            # --auto waits for the required CI Gate check, then merges via RELEASE_TOKEN.
+            gh pr merge "$PR" --auto --squash
+          else
+            gh label create needs-release-review --color FBCA04 \
+              --description "Release held by Claude for manual review" 2>/dev/null || true
+            gh pr edit "$PR" --add-label needs-release-review || true
+            gh pr comment "$PR" --body "🤖 Claude weekly release: HELD for manual review.
+
+          $body"
+          fi
