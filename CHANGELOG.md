@@ -1,5 +1,11 @@
 # @googleworkspace/cli
 
+## 0.23.2
+
+### Patch Changes
+
+- 42b17cb: Sync generated skills with latest Google Discovery API specs
+
 ## 0.23.1
 
 ### Patch Changes

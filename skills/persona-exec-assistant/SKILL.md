@@ -2,7 +2,7 @@
 name: persona-exec-assistant
 description: "Manage an executive's schedule, inbox, and communications."
 metadata:
-  version: 0.23.1
+  version: 0.23.2
   openclaw:
     category: "persona"
     requires:
