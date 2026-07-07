@@ -143,22 +143,25 @@ jobs:
         env:
           # RELEASE_TOKEN so the merge's push re-triggers the release workflows.
           GH_TOKEN: ${{ secrets.RELEASE_TOKEN }}
+          # This job has no checkout, so gh cannot infer the repo from a git
+          # remote — pass it explicitly.
+          REPO: ${{ github.repository }}
           PR: ${{ needs.assess.outputs.pr }}
           VERDICT: ${{ needs.assess.outputs.verdict }}
         run: |
           set -euo pipefail
           body=$(cat release-verdict.txt 2>/dev/null || echo "(no rationale captured)")
           if [ "$VERDICT" = "MERGE" ]; then
-            gh pr comment "$PR" --body "🤖 Claude weekly release: assessed LOW risk — enabling auto-merge to cut the release (gated on CI Gate).
+            gh pr comment "$PR" -R "$REPO" --body "🤖 Claude weekly release: assessed LOW risk — enabling auto-merge to cut the release (gated on CI Gate).
 
           $body"
             # --auto waits for the required CI Gate check, then merges via RELEASE_TOKEN.
-            gh pr merge "$PR" --auto --squash
+            gh pr merge "$PR" -R "$REPO" --auto --squash
           else
-            gh label create needs-release-review --color FBCA04 \
+            gh label create needs-release-review -R "$REPO" --color FBCA04 \
               --description "Release held by Claude for manual review" 2>/dev/null || true
-            gh pr edit "$PR" --add-label needs-release-review || true
-            gh pr comment "$PR" --body "🤖 Claude weekly release: HELD for manual review.
+            gh pr edit "$PR" -R "$REPO" --add-label needs-release-review || true
+            gh pr comment "$PR" -R "$REPO" --body "🤖 Claude weekly release: HELD for manual review.
 
           $body"
           fi
