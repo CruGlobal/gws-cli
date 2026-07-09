@@ -28,6 +28,7 @@ use triage::handle_triage;
 use watch::handle_watch;
 
 pub(super) use crate::auth;
+pub(super) use crate::auth::MaybeBearerAuth;
 pub(super) use crate::error::GwsError;
 pub(super) use crate::executor;
 use crate::output::sanitize_for_terminal;
@@ -377,7 +378,7 @@ pub(super) async fn fetch_message_metadata(
     let resp = crate::client::send_with_retry(|| {
         client
             .get(&url)
-            .bearer_auth(token)
+            .maybe_bearer_auth(token)
             .query(&[("format", "full")])
     })
     .await
@@ -455,7 +456,7 @@ async fn fetch_send_as_identities(
     let resp = crate::client::send_with_retry(|| {
         client
             .get("https://gmail.googleapis.com/gmail/v1/users/me/settings/sendAs")
-            .bearer_auth(token)
+            .maybe_bearer_auth(token)
     })
     .await
     .map_err(|e| GwsError::Other(anyhow::anyhow!("Failed to fetch sendAs settings: {e}")))?;
@@ -649,7 +650,7 @@ async fn fetch_profile_display_name(
         client
             .get("https://people.googleapis.com/v1/people/me")
             .query(&[("personFields", "names")])
-            .bearer_auth(token)
+            .maybe_bearer_auth(token)
     })
     .await
     .map_err(|e| GwsError::Other(anyhow::anyhow!("People API request failed: {e}")))?;
@@ -697,7 +698,7 @@ async fn fetch_attachment_data(
         crate::validate::encode_path_segment(attachment_id),
     );
 
-    let resp = crate::client::send_with_retry(|| client.get(&url).bearer_auth(token))
+    let resp = crate::client::send_with_retry(|| client.get(&url).maybe_bearer_auth(token))
         .await
         .map_err(|e| GwsError::Other(anyhow::anyhow!("Failed to fetch attachment: {e}")))?;
 
@@ -1444,8 +1445,12 @@ pub(super) async fn dispatch_raw_email(
     let params = json!({ "userId": "me" });
     let params_str = params.to_string();
 
-    let (token, auth_method) = match existing_token {
+    // `existing_token` may be `Some("")` when the caller already called
+    // `auth::get_token` under no-auth mode (which returns an empty-string
+    // sentinel) — treat that the same as "no token yet" below.
+    let (token, auth_method) = match existing_token.filter(|t| !t.is_empty()) {
         Some(t) => (Some(t.to_string()), executor::AuthMethod::OAuth),
+        None if auth::no_auth_mode() => (None, executor::AuthMethod::None),
         None => {
             let scopes: Vec<&str> = method.scopes.iter().map(|s| s.as_str()).collect();
             match auth::get_token(&scopes).await {

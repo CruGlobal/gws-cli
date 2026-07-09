@@ -14,6 +14,7 @@
 
 use super::Helper;
 use crate::auth;
+use crate::auth::MaybeBearerAuth;
 use crate::discovery::RestDescription;
 use crate::error::GwsError;
 use anyhow::Context;
@@ -257,7 +258,7 @@ pub async fn sanitize_text(template: &str, text: &str) -> Result<SanitizationRes
     let client = crate::client::build_client()?;
     let resp = client
         .post(&url)
-        .header("Authorization", format!("Bearer {token}"))
+        .maybe_bearer_auth(&token)
         .header("Content-Type", "application/json")
         .body(body)
         .send()
@@ -288,7 +289,7 @@ async fn model_armor_post(url: &str, body: &str) -> Result<(), GwsError> {
     let client = crate::client::build_client()?;
     let resp = client
         .post(url)
-        .header("Authorization", format!("Bearer {token}"))
+        .maybe_bearer_auth(&token)
         .header("Content-Type", "application/json")
         .body(body.to_string())
         .send()

@@ -20,6 +20,7 @@
 //! 3. Google Calendar Settings API (`users/me/settings/timezone`)
 //! 4. Machine-local timezone (fallback with warning)
 
+use crate::auth::MaybeBearerAuth;
 use crate::error::GwsError;
 use chrono_tz::Tz;
 use std::path::PathBuf;
@@ -79,7 +80,7 @@ async fn fetch_account_timezone(client: &reqwest::Client, token: &str) -> Result
     let url = "https://www.googleapis.com/calendar/v3/users/me/settings/timezone";
     let resp = client
         .get(url)
-        .bearer_auth(token)
+        .maybe_bearer_auth(token)
         .send()
         .await
         .map_err(|e| GwsError::Other(anyhow::anyhow!("Failed to fetch account timezone: {e}")))?;

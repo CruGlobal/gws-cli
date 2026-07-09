@@ -207,7 +207,7 @@ pub(super) async fn handle_subscribe(
             })?;
             let resp = client
                 .put(format!("{PUBSUB_API_BASE}/{topic}"))
-                .bearer_auth(token)
+                .maybe_bearer_auth(token)
                 .header("Content-Type", "application/json")
                 .body("{}")
                 .send()
@@ -232,7 +232,7 @@ pub(super) async fn handle_subscribe(
             });
             let resp = client
                 .put(format!("{PUBSUB_API_BASE}/{sub}"))
-                .bearer_auth(token)
+                .maybe_bearer_auth(token)
                 .header("Content-Type", "application/json")
                 .json(&sub_body)
                 .send()
@@ -270,7 +270,7 @@ pub(super) async fn handle_subscribe(
 
             let resp = client
                 .post("https://workspaceevents.googleapis.com/v1/subscriptions")
-                .bearer_auth(&ws_token)
+                .maybe_bearer_auth(&ws_token)
                 .header("Content-Type", "application/json")
                 .json(&ws_body)
                 .send()
@@ -332,14 +332,14 @@ pub(super) async fn handle_subscribe(
             if let Ok(pubsub_token) = pubsub_token_provider.access_token().await {
                 let _ = client
                     .delete(format!("{PUBSUB_API_BASE}/{pubsub_subscription}"))
-                    .bearer_auth(&pubsub_token)
+                    .maybe_bearer_auth(&pubsub_token)
                     .send()
                     .await;
                 // Delete Pub/Sub topic
                 if let Some(ref topic) = topic_name {
                     let _ = client
                         .delete(format!("{PUBSUB_API_BASE}/{topic}"))
-                        .bearer_auth(&pubsub_token)
+                        .maybe_bearer_auth(&pubsub_token)
                         .send()
                         .await;
                 }
@@ -394,7 +394,7 @@ async fn pull_loop(
 
         let pull_future = client
             .post(format!("{pubsub_api_base}/{subscription}:pull"))
-            .bearer_auth(&token)
+            .maybe_bearer_auth(&token)
             .header("Content-Type", "application/json")
             .json(&pull_body)
             .timeout(std::time::Duration::from_secs(config.poll_interval.max(10)))
@@ -463,7 +463,7 @@ async fn pull_loop(
 
             let _ = client
                 .post(format!("{pubsub_api_base}/{subscription}:acknowledge"))
-                .bearer_auth(&token)
+                .maybe_bearer_auth(&token)
                 .header("Content-Type", "application/json")
                 .json(&ack_body)
                 .send()

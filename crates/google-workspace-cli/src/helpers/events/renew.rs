@@ -73,7 +73,7 @@ pub(super) async fn handle_renew(
             .post(format!(
                 "https://workspaceevents.googleapis.com/v1/{name}:reactivate"
             ))
-            .bearer_auth(&ws_token)
+            .maybe_bearer_auth(&ws_token)
             .header("Content-Type", "application/json")
             .body("{}")
             .send()
@@ -89,7 +89,7 @@ pub(super) async fn handle_renew(
         let within_secs = parse_duration(&config.within)?;
         let resp = client
             .get("https://workspaceevents.googleapis.com/v1/subscriptions")
-            .bearer_auth(&ws_token)
+            .maybe_bearer_auth(&ws_token)
             .send()
             .await
             .context("Failed to list subscriptions")?;
@@ -112,7 +112,7 @@ pub(super) async fn handle_renew(
                     .post(format!(
                         "https://workspaceevents.googleapis.com/v1/{name}:reactivate"
                     ))
-                    .bearer_auth(&ws_token)
+                    .maybe_bearer_auth(&ws_token)
                     .header("Content-Type", "application/json")
                     .body("{}")
                     .send()
