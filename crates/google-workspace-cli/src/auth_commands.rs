@@ -1200,6 +1200,23 @@ fn run_simple_scope_picker(services_filter: Option<&HashSet<String>>) -> Option<
 }
 
 async fn handle_status() -> Result<(), GwsError> {
+    if crate::auth::no_auth_mode() {
+        // Credential-injecting-proxy deployments: report this clearly instead
+        // of walking through (and potentially reporting on) credential files
+        // that are configured but deliberately unused.
+        let output = json!({
+            "auth_method": "none",
+            "message": "Auth disabled via GOOGLE_WORKSPACE_CLI_AUTH=none. \
+                        Requests are sent with no Authorization header; \
+                        a network proxy is expected to handle authentication.",
+        });
+        println!(
+            "{}",
+            serde_json::to_string_pretty(&output).unwrap_or_default()
+        );
+        return Ok(());
+    }
+
     let plain_path = plain_credentials_path();
     let enc_path = credential_store::encrypted_credentials_path();
     let token_cache = token_cache_path();
