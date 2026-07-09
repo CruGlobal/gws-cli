@@ -2,7 +2,7 @@
 name: gws-modelarmor
 description: "Google Model Armor: Filter user-generated content for safety."
 metadata:
-  version: 0.23.2
+  version: 0.24.0
   openclaw:
     category: "productivity"
     requires:

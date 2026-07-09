@@ -2,7 +2,7 @@
 name: gws-script
 description: "Manage Google Apps Script projects."
 metadata:
-  version: 0.23.2
+  version: 0.24.0
   openclaw:
     category: "productivity"
     requires:
