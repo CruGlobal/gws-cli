@@ -14,6 +14,7 @@
 
 use super::Helper;
 use crate::auth;
+use crate::auth::MaybeBearerAuth;
 use crate::error::GwsError;
 use crate::executor;
 use clap::{Arg, ArgAction, ArgMatches, Command};
@@ -165,10 +166,14 @@ TIPS:
                 let (params_str, body_str, scopes) = build_insert_request(matches, doc)?;
 
                 let scopes_str: Vec<&str> = scopes.iter().map(|s| s.as_str()).collect();
-                let (token, auth_method) = match auth::get_token(&scopes_str).await {
-                    Ok(t) => (Some(t), executor::AuthMethod::OAuth),
-                    Err(_) if matches.get_flag("dry-run") => (None, executor::AuthMethod::None),
-                    Err(e) => return Err(GwsError::Auth(format!("Calendar auth failed: {e}"))),
+                let (token, auth_method) = if auth::no_auth_mode() {
+                    (None, executor::AuthMethod::None)
+                } else {
+                    match auth::get_token(&scopes_str).await {
+                        Ok(t) => (Some(t), executor::AuthMethod::OAuth),
+                        Err(_) if matches.get_flag("dry-run") => (None, executor::AuthMethod::None),
+                        Err(e) => return Err(GwsError::Auth(format!("Calendar auth failed: {e}"))),
+                    }
                 };
 
                 let events_res = doc.resources.get("events").ok_or_else(|| {
@@ -262,7 +267,7 @@ async fn handle_agenda(matches: &ArgMatches) -> Result<(), GwsError> {
     let list_url = "https://www.googleapis.com/calendar/v3/users/me/calendarList";
     let list_resp = client
         .get(list_url)
-        .bearer_auth(&token)
+        .maybe_bearer_auth(&token)
         .send()
         .await
         .map_err(|e| GwsError::Other(anyhow::anyhow!("Failed to list calendars: {e}")))?;
@@ -341,7 +346,7 @@ async fn handle_agenda(matches: &ArgMatches) -> Result<(), GwsError> {
                             ("orderBy", "startTime"),
                             ("maxResults", "50"),
                         ])
-                        .bearer_auth(token)
+                        .maybe_bearer_auth(token)
                 })
                 .await;
 
