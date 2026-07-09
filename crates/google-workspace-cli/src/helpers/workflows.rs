@@ -17,6 +17,7 @@
 
 use super::Helper;
 use crate::auth;
+use crate::auth::MaybeBearerAuth;
 use crate::error::GwsError;
 use crate::output::sanitize_for_terminal;
 use clap::{Arg, ArgMatches, Command};
@@ -238,7 +239,7 @@ async fn get_json(
     let resp = client
         .get(url)
         .query(query)
-        .bearer_auth(token)
+        .maybe_bearer_auth(token)
         .send()
         .await
         .map_err(|e| GwsError::Other(anyhow::anyhow!("HTTP request failed: {e}")))?;
@@ -503,7 +504,7 @@ async fn handle_email_to_task(matches: &ArgMatches) -> Result<(), GwsError> {
 
     let resp = client
         .post(&task_url)
-        .bearer_auth(&token)
+        .maybe_bearer_auth(&token)
         .json(&task_body)
         .send()
         .await
@@ -662,7 +663,7 @@ async fn handle_file_announce(matches: &ArgMatches) -> Result<(), GwsError> {
 
     let chat_resp = client
         .post(&chat_url)
-        .bearer_auth(&token)
+        .maybe_bearer_auth(&token)
         .json(&chat_body)
         .send()
         .await

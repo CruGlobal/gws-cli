@@ -53,7 +53,7 @@ pub async fn handle_triage(matches: &ArgMatches) -> Result<(), GwsError> {
     let list_resp = client
         .get(list_url)
         .query(&[("q", query), ("maxResults", &max.to_string())])
-        .bearer_auth(&token)
+        .maybe_bearer_auth(&token)
         .send()
         .await
         .map_err(|e| GwsError::Other(anyhow::anyhow!("Failed to list messages: {e}")))?;
@@ -106,7 +106,7 @@ pub async fn handle_triage(matches: &ArgMatches) -> Result<(), GwsError> {
                 );
 
                 let get_resp = crate::client::send_with_retry(|| {
-                    client.get(&get_url).bearer_auth(token)
+                    client.get(&get_url).maybe_bearer_auth(token)
                 })
                 .await
                 .ok()?;

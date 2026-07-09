@@ -205,6 +205,27 @@ export GOOGLE_WORKSPACE_CLI_TOKEN=$(gcloud auth print-access-token)
 
 Environment variables can also live in a `.env` file.
 
+### No-Auth Mode
+
+For deployments that sit behind a credential-injecting network proxy — e.g.
+gapx's principal-bound grants, fronted by an Agent Proxy that strips any
+client-set `Authorization` header and injects its own — set:
+
+```bash
+export GOOGLE_WORKSPACE_CLI_AUTH=none
+```
+
+With this set, `gws` skips credential loading and token acquisition entirely
+(any `GOOGLE_WORKSPACE_CLI_TOKEN`, credentials file, or ADC is ignored) and
+sends every request with no `Authorization` header — not an empty bearer
+token. Trust lives entirely in the network path; the proxy is expected to
+authenticate the request. `gws auth status` reports `"auth_method": "none"`
+in this mode rather than inspecting local credential files.
+
+Typically paired with `GOOGLE_WORKSPACE_CLI_DISCOVERY_BASE_URL` (see
+[Environment Variables](#environment-variables)) so both discovery documents
+and API calls route through the proxy.
+
 ## AI Agent Skills
 
 The repo ships 100+ Agent Skills (`SKILL.md` files) — one for every supported API, plus higher-level helpers for common workflows and 50 curated recipes for Gmail, Drive, Docs, Calendar, and Sheets. See the full [Skills Index](docs/skills.md) for the complete list.
@@ -369,9 +390,11 @@ All variables are optional. See [`.env.example`](.env.example) for a copy-paste 
 |---|---|
 | `GOOGLE_WORKSPACE_CLI_TOKEN` | Pre-obtained OAuth2 access token (highest priority) |
 | `GOOGLE_WORKSPACE_CLI_CREDENTIALS_FILE` | Path to OAuth credentials JSON (user or service account) |
+| `GOOGLE_WORKSPACE_CLI_AUTH` | Set to `none` to disable client-side auth entirely — no credentials are loaded and requests carry no `Authorization` header. See [No-Auth Mode](#no-auth-mode) |
 | `GOOGLE_WORKSPACE_CLI_CLIENT_ID` | OAuth client ID (alternative to `client_secret.json`) |
 | `GOOGLE_WORKSPACE_CLI_CLIENT_SECRET` | OAuth client secret (paired with `CLIENT_ID`) |
 | `GOOGLE_WORKSPACE_CLI_CONFIG_DIR` | Override config directory (default: `~/.config/gws`) |
+| `GOOGLE_WORKSPACE_CLI_DISCOVERY_BASE_URL` | Fetch discovery docs (and thus all API traffic) from this base instead of Google (e.g. a proxy) |
 | `GOOGLE_WORKSPACE_CLI_SANITIZE_TEMPLATE` | Default Model Armor template |
 | `GOOGLE_WORKSPACE_CLI_SANITIZE_MODE` | `warn` (default) or `block` |
 | `GOOGLE_WORKSPACE_CLI_LOG` | Log level for stderr (e.g., `gws=debug`). Off by default. |

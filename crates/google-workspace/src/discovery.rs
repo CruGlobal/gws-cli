@@ -183,14 +183,85 @@ pub struct JsonSchemaProperty {
     pub additional_properties: Option<Box<JsonSchemaProperty>>,
 }
 
+/// Builds the primary discovery-document URL.
+///
+/// When `base_url` is `Some`, the document is fetched from a proxy at
+/// `{base}/discovery/v1/apis/{service}/{version}/rest` (trailing slashes on the
+/// base are trimmed). When `None`, the standard Google endpoint is used.
+fn primary_discovery_url(service: &str, version: &str, base_url: Option<&str>) -> String {
+    let service = crate::validate::encode_path_segment(service);
+    let version = crate::validate::encode_path_segment(version);
+    match base_url {
+        Some(base) => format!(
+            "{}/discovery/v1/apis/{service}/{version}/rest",
+            base.trim_end_matches('/')
+        ),
+        None => format!("https://www.googleapis.com/discovery/v1/apis/{service}/{version}/rest"),
+    }
+}
+
+/// Returns the per-service `$discovery/rest` fallback URL to try when the
+/// primary discovery fetch fails.
+///
+/// Returns `None` when a `base_url` override is set: the proxy is expected to
+/// serve every document (or return a meaningful error), so we must not fall back
+/// to per-service Google hosts, which would bypass the proxy.
+fn discovery_fallback_url(service: &str, base_url: Option<&str>) -> Option<String> {
+    match base_url {
+        Some(_) => None,
+        // Pattern used by newer APIs (Forms, Keep, Meet, etc.).
+        None => Some(format!("https://{service}.googleapis.com/$discovery/rest")),
+    }
+}
+
+/// Builds the on-disk cache filename for a discovery document.
+///
+/// Without an override the filename is `{service}_{version}.json` (unchanged,
+/// backward compatible). With a `base_url` override the filename is namespaced
+/// with a short stable hash of the (trailing-slash-trimmed) base URL —
+/// `{service}_{version}_{hash}.json` — so proxied and direct documents never
+/// share a cache entry.
+fn discovery_cache_filename(service: &str, version: &str, base_url: Option<&str>) -> String {
+    match base_url {
+        Some(base) => {
+            let hash = short_hash(base.trim_end_matches('/'));
+            format!("{service}_{version}_{hash}.json")
+        }
+        None => format!("{service}_{version}.json"),
+    }
+}
+
+/// Returns a short (8 hex char), stable, dependency-free hash of `input`.
+///
+/// Uses the 64-bit FNV-1a algorithm so the value is deterministic across
+/// platforms and Rust versions (unlike `DefaultHasher`), keeping cache
+/// filenames stable between runs.
+fn short_hash(input: &str) -> String {
+    const FNV_OFFSET_BASIS: u64 = 0xcbf2_9ce4_8422_2325;
+    const FNV_PRIME: u64 = 0x0000_0100_0000_01b3;
+    let mut hash = FNV_OFFSET_BASIS;
+    for byte in input.bytes() {
+        hash ^= u64::from(byte);
+        hash = hash.wrapping_mul(FNV_PRIME);
+    }
+    format!("{hash:016x}")[..8].to_string()
+}
+
 /// Fetches and caches a Google Discovery Document.
 ///
 /// When `cache_dir` is `Some`, the document is cached on disk with a 24-hour
 /// TTL. Pass `None` to skip caching entirely.
+///
+/// When `base_url` is `Some`, discovery is fetched from that base (e.g. a proxy)
+/// instead of `www.googleapis.com`, and the per-service `$discovery/rest`
+/// fallback is skipped — the proxy is expected to serve every document or return
+/// a meaningful error. The cache filename is namespaced by the base URL so
+/// proxied and direct documents never mix.
 pub async fn fetch_discovery_document(
     service: &str,
     version: &str,
     cache_dir: Option<&std::path::Path>,
+    base_url: Option<&str>,
 ) -> anyhow::Result<RestDescription> {
     // Validate service and version to prevent path traversal in cache filenames
     // and injection in discovery URLs.
@@ -202,7 +273,7 @@ pub async fn fetch_discovery_document(
     // Check cache (24hr TTL)
     if let Some(dir) = cache_dir {
         tokio::fs::create_dir_all(dir).await?;
-        let cache_file = dir.join(format!("{service}_{version}.json"));
+        let cache_file = dir.join(discovery_cache_filename(service, version, base_url));
 
         if let Ok(metadata) = tokio::fs::metadata(&cache_file).await {
             if let Ok(modified) = metadata.modified() {
@@ -216,11 +287,7 @@ pub async fn fetch_discovery_document(
         }
     }
 
-    let url = format!(
-        "https://www.googleapis.com/discovery/v1/apis/{}/{}/rest",
-        crate::validate::encode_path_segment(service),
-        crate::validate::encode_path_segment(version),
-    );
+    let url = primary_discovery_url(service, version, base_url);
 
     tracing::debug!(service = %service, version = %version, "Fetching discovery document");
     let client = crate::client::build_client()?;
@@ -228,9 +295,7 @@ pub async fn fetch_discovery_document(
 
     let body = if resp.status().is_success() {
         resp.text().await?
-    } else {
-        // Try the $discovery/rest URL pattern used by newer APIs (Forms, Keep, Meet, etc.)
-        let alt_url = format!("https://{service}.googleapis.com/$discovery/rest");
+    } else if let Some(alt_url) = discovery_fallback_url(service, base_url) {
         let alt_resp = client
             .get(&alt_url)
             .query(&[("version", version)])
@@ -243,11 +308,18 @@ pub async fn fetch_discovery_document(
             );
         }
         alt_resp.text().await?
+    } else {
+        // A base-URL override is set: the proxy serves every document, so we do
+        // not fall back to per-service Google hosts (which would bypass it).
+        anyhow::bail!(
+            "Failed to fetch Discovery Document for {service}/{version} from {url}: HTTP {}",
+            resp.status()
+        );
     };
 
     // Write to cache
     if let Some(dir) = cache_dir {
-        let cache_file = dir.join(format!("{service}_{version}.json"));
+        let cache_file = dir.join(discovery_cache_filename(service, version, base_url));
         if let Err(e) = tokio::fs::write(&cache_file, &body).await {
             tracing::warn!(error = %e, "Failed to write discovery cache");
         }
@@ -325,5 +397,101 @@ mod tests {
         assert_eq!(doc.service_path, ""); // default empty string
         assert!(doc.resources.is_empty());
         assert!(doc.schemas.is_empty());
+    }
+
+    #[test]
+    fn test_primary_discovery_url_default() {
+        assert_eq!(
+            primary_discovery_url("drive", "v3", None),
+            "https://www.googleapis.com/discovery/v1/apis/drive/v3/rest"
+        );
+    }
+
+    #[test]
+    fn test_primary_discovery_url_override() {
+        assert_eq!(
+            primary_discovery_url("drive", "v3", Some("https://proxy.example.com")),
+            "https://proxy.example.com/discovery/v1/apis/drive/v3/rest"
+        );
+    }
+
+    #[test]
+    fn test_primary_discovery_url_override_trims_trailing_slash() {
+        // A single or multiple trailing slashes on the base are stripped.
+        assert_eq!(
+            primary_discovery_url("drive", "v3", Some("https://proxy.example.com/")),
+            "https://proxy.example.com/discovery/v1/apis/drive/v3/rest"
+        );
+        assert_eq!(
+            primary_discovery_url("drive", "v3", Some("https://proxy.example.com/base///")),
+            "https://proxy.example.com/base/discovery/v1/apis/drive/v3/rest"
+        );
+    }
+
+    #[test]
+    fn test_fallback_url_used_without_override() {
+        assert_eq!(
+            discovery_fallback_url("forms", None).as_deref(),
+            Some("https://forms.googleapis.com/$discovery/rest")
+        );
+    }
+
+    #[test]
+    fn test_fallback_skipped_with_override() {
+        // Override set => no per-service Google fallback (proxy serves all).
+        assert_eq!(
+            discovery_fallback_url("forms", Some("https://proxy.example.com")),
+            None
+        );
+    }
+
+    #[test]
+    fn test_cache_filename_default_unchanged() {
+        // Backward compatible: no override => exact legacy filename.
+        assert_eq!(
+            discovery_cache_filename("drive", "v3", None),
+            "drive_v3.json"
+        );
+    }
+
+    #[test]
+    fn test_cache_filename_override_is_namespaced() {
+        let name = discovery_cache_filename("drive", "v3", Some("https://proxy.example.com"));
+        // {service}_{version}_{hash8}.json
+        assert!(name.starts_with("drive_v3_"));
+        assert!(name.ends_with(".json"));
+        let hash = name
+            .strip_prefix("drive_v3_")
+            .and_then(|s| s.strip_suffix(".json"))
+            .unwrap();
+        assert_eq!(hash.len(), 8);
+        assert!(hash.chars().all(|c| c.is_ascii_hexdigit()));
+        // Differs from the un-namespaced default so proxied/direct never collide.
+        assert_ne!(name, "drive_v3.json");
+    }
+
+    #[test]
+    fn test_cache_filename_trailing_slash_matches_bare() {
+        // Trailing slashes are trimmed before hashing, so these resolve to the
+        // same cache entry.
+        assert_eq!(
+            discovery_cache_filename("drive", "v3", Some("https://proxy.example.com")),
+            discovery_cache_filename("drive", "v3", Some("https://proxy.example.com/"))
+        );
+    }
+
+    #[test]
+    fn test_cache_filename_distinct_bases_distinct_files() {
+        assert_ne!(
+            discovery_cache_filename("drive", "v3", Some("https://proxy-a.example.com")),
+            discovery_cache_filename("drive", "v3", Some("https://proxy-b.example.com"))
+        );
+    }
+
+    #[test]
+    fn test_short_hash_is_stable_and_short() {
+        // Deterministic across runs (FNV-1a), fixed known value.
+        assert_eq!(short_hash("https://proxy.example.com"), "b7266c31");
+        assert_eq!(short_hash("https://proxy.example.com").len(), 8);
     }
 }

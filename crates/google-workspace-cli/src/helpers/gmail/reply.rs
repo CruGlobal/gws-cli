@@ -178,7 +178,7 @@ async fn fetch_user_email(client: &reqwest::Client, token: &str) -> Result<Strin
     let resp = crate::client::send_with_retry(|| {
         client
             .get("https://gmail.googleapis.com/gmail/v1/users/me/profile")
-            .bearer_auth(token)
+            .maybe_bearer_auth(token)
     })
     .await
     .map_err(|e| GwsError::Other(anyhow::anyhow!("Failed to fetch user profile: {e}")))?;

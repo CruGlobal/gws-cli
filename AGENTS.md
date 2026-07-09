@@ -200,6 +200,7 @@ See [`src/helpers/README.md`](crates/google-workspace-cli/src/helpers/README.md)
 | `GOOGLE_WORKSPACE_CLI_TOKEN` | Pre-obtained OAuth2 access token (highest priority; bypasses all credential file loading) |
 | `GOOGLE_WORKSPACE_CLI_CREDENTIALS_FILE` | Path to OAuth credentials JSON (no default; if unset, falls back to encrypted credentials in `~/.config/gws/`) |
 | `GOOGLE_WORKSPACE_CLI_KEYRING_BACKEND` | Keyring backend: `keyring` (default, uses OS keyring with file fallback) or `file` (file only, for Docker/CI/headless) |
+| `GOOGLE_WORKSPACE_CLI_AUTH` | Set to `none` to disable client-side auth entirely: skips credential loading / token acquisition (any configured credentials are ignored), and sends requests with no `Authorization` header at all — not an empty bearer token. For deployments behind a credential-injecting network proxy (e.g. gapx) that authenticates the request itself. `gws auth status` reports this mode instead of inspecting credential files. See `auth::no_auth_mode` / `auth::resolve_token` / `auth::MaybeBearerAuth` in `crates/google-workspace-cli/src/auth.rs`. |
 
 | `GOOGLE_APPLICATION_CREDENTIALS` | Standard Google ADC path; used as fallback when no gws-specific credentials are configured |
 
@@ -208,6 +209,7 @@ See [`src/helpers/README.md`](crates/google-workspace-cli/src/helpers/README.md)
 | Variable | Description |
 |---|---|
 | `GOOGLE_WORKSPACE_CLI_CONFIG_DIR` | Override the config directory (default: `~/.config/gws`) |
+| `GOOGLE_WORKSPACE_CLI_DISCOVERY_BASE_URL` | Base URL for fetching discovery documents (e.g. a proxy). When set, discovery is fetched from `{base}/discovery/v1/apis/{service}/{version}/rest`, the per-service `$discovery/rest` fallback is skipped, and the discovery cache is namespaced by base URL. Since the CLI is discovery-driven, this redirects all API traffic through the given base. |
 
 ### OAuth Client
 

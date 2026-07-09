@@ -20,6 +20,7 @@ use renew::handle_renew;
 use subscribe::handle_subscribe;
 
 pub(super) use crate::auth;
+pub(super) use crate::auth::MaybeBearerAuth;
 pub(super) use crate::error::GwsError;
 pub(super) use anyhow::Context;
 pub(super) use clap::{Arg, ArgAction, ArgMatches, Command};

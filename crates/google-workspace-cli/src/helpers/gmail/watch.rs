@@ -53,7 +53,7 @@ pub(super) async fn handle_watch(
             eprintln!("Creating Pub/Sub topic: {t}");
             let resp = client
                 .put(format!("{PUBSUB_API_BASE}/{t}"))
-                .bearer_auth(&pubsub_token)
+                .maybe_bearer_auth(&pubsub_token)
                 .header("Content-Type", "application/json")
                 .body("{}")
                 .send()
@@ -82,7 +82,7 @@ pub(super) async fn handle_watch(
             });
             let resp = client
                 .post(format!("{PUBSUB_API_BASE}/{t}:setIamPolicy"))
-                .bearer_auth(&pubsub_token)
+                .maybe_bearer_auth(&pubsub_token)
                 .header("Content-Type", "application/json")
                 .json(&iam_body)
                 .send()
@@ -118,7 +118,7 @@ pub(super) async fn handle_watch(
         });
         let resp = client
             .put(format!("{PUBSUB_API_BASE}/{sub}"))
-            .bearer_auth(&pubsub_token)
+            .maybe_bearer_auth(&pubsub_token)
             .header("Content-Type", "application/json")
             .json(&sub_body)
             .send()
@@ -147,7 +147,7 @@ pub(super) async fn handle_watch(
 
         let resp = client
             .post(format!("{GMAIL_API_BASE}/users/me/watch"))
-            .bearer_auth(&gmail_token)
+            .maybe_bearer_auth(&gmail_token)
             .header("Content-Type", "application/json")
             .json(&watch_body)
             .send()
@@ -189,7 +189,7 @@ pub(super) async fn handle_watch(
     // Get initial historyId for tracking
     let profile_resp = client
         .get(format!("{GMAIL_API_BASE}/users/me/profile"))
-        .bearer_auth(&gmail_token)
+        .maybe_bearer_auth(&gmail_token)
         .send()
         .await
         .context("Failed to get Gmail profile")?;
@@ -226,13 +226,13 @@ pub(super) async fn handle_watch(
             if let Ok(pubsub_token) = pubsub_token_provider.access_token().await {
                 let _ = client
                     .delete(format!("{PUBSUB_API_BASE}/{}", pubsub_subscription))
-                    .bearer_auth(&pubsub_token)
+                    .maybe_bearer_auth(&pubsub_token)
                     .send()
                     .await;
                 if let Some(ref topic) = topic_name {
                     let _ = client
                         .delete(format!("{PUBSUB_API_BASE}/{}", topic))
-                        .bearer_auth(&pubsub_token)
+                        .maybe_bearer_auth(&pubsub_token)
                         .send()
                         .await;
                 }
@@ -274,7 +274,7 @@ async fn watch_pull_loop(
         let pull_future = runtime
             .client
             .post(format!("{}/{subscription}:pull", runtime.pubsub_api_base))
-            .bearer_auth(&pubsub_token)
+            .maybe_bearer_auth(&pubsub_token)
             .header("Content-Type", "application/json")
             .json(&pull_body)
             .timeout(std::time::Duration::from_secs(config.poll_interval.max(10)))
@@ -335,7 +335,7 @@ async fn watch_pull_loop(
                     "{}/{subscription}:acknowledge",
                     runtime.pubsub_api_base
                 ))
-                .bearer_auth(&pubsub_token)
+                .maybe_bearer_auth(&pubsub_token)
                 .header("Content-Type", "application/json")
                 .json(&ack_body)
                 .send()
@@ -414,7 +414,7 @@ async fn fetch_and_output_messages(
             ("startHistoryId", &start_history_id.to_string()),
             ("historyTypes", &"messageAdded".to_string()),
         ])
-        .bearer_auth(&gmail_token)
+        .maybe_bearer_auth(&gmail_token)
         .send()
         .await
         .context("Failed to get history")?;
@@ -431,7 +431,7 @@ async fn fetch_and_output_messages(
         let msg_resp = client
             .get(&msg_url)
             .query(&[("format", msg_format)])
-            .bearer_auth(&gmail_token)
+            .maybe_bearer_auth(&gmail_token)
             .send()
             .await;
 
