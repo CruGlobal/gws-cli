@@ -2,7 +2,7 @@
 name: gws-keep
 description: "Manage Google Keep notes."
 metadata:
-  version: 0.23.2
+  version: 0.24.0
   openclaw:
     category: "productivity"
     requires:

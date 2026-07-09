@@ -2,7 +2,7 @@
 name: gws-script-push
 description: "Google Apps Script: Upload local files to an Apps Script project."
 metadata:
-  version: 0.23.2
+  version: 0.24.0
   openclaw:
     category: "productivity"
     requires:

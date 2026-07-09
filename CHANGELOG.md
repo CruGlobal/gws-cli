@@ -1,5 +1,11 @@
 # @googleworkspace/cli
 
+## 0.24.0
+
+### Minor Changes
+
+- 7d6b8b3: Add `GOOGLE_WORKSPACE_CLI_AUTH=none` to skip client-side credential acquisition and send requests with no `Authorization` header, for deployments behind a credential-injecting network proxy (e.g. gapx).
+
 ## 0.23.2
 
 ### Patch Changes
