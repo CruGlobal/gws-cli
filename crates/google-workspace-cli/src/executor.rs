@@ -2400,3 +2400,46 @@ async fn test_get_does_not_set_content_length_zero() {
         "GET with no body should not have Content-Length header"
     );
 }
+
+/// Acceptance test for no-auth mode: a request built with `token: None` /
+/// `AuthMethod::None` (what `auth::resolve_token` returns when
+/// `GOOGLE_WORKSPACE_CLI_AUTH=none` is set) must carry no `Authorization`
+/// header at all — not an empty bearer token.
+#[tokio::test]
+async fn test_no_token_and_auth_method_none_sends_no_authorization_header() {
+    let client = reqwest::Client::new();
+    let method = RestMethod {
+        http_method: "GET".to_string(),
+        path: "files".to_string(),
+        ..Default::default()
+    };
+    let input = ExecutionInput {
+        full_url: "https://example.com/drive/v3/files".to_string(),
+        body: None,
+        params: Map::new(),
+        query_params: Vec::new(),
+        is_upload: false,
+    };
+
+    let request = build_http_request(
+        &client,
+        &method,
+        &input,
+        None,
+        &AuthMethod::None,
+        None,
+        0,
+        &None,
+    )
+    .await
+    .unwrap();
+
+    let built = request.build().unwrap();
+    assert!(
+        built
+            .headers()
+            .get(reqwest::header::AUTHORIZATION)
+            .is_none(),
+        "no-auth mode must not send an Authorization header"
+    );
+}

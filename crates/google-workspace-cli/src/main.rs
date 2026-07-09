@@ -261,22 +261,11 @@ async fn run() -> Result<(), GwsError> {
     // to avoid restrictive scopes like gmail.metadata that block query parameters.
     let scopes: Vec<&str> = select_scope(&method.scopes).into_iter().collect();
 
-    // Authenticate: try OAuth, fail with error if credentials exist but are broken
-    let (token, auth_method) = match auth::get_token(&scopes).await {
-        Ok(t) => (Some(t), executor::AuthMethod::OAuth),
-        Err(e) => {
-            // If credentials were found but failed (e.g. decryption error, invalid token),
-            // propagate the error instead of silently falling back to unauthenticated.
-            // Only fall back to None if no credentials exist at all.
-            let err_msg = format!("{e:#}");
-            // NB: matches the bail!() message in auth::load_credentials_inner
-            if err_msg.starts_with("No credentials found") {
-                (None, executor::AuthMethod::None)
-            } else {
-                return Err(GwsError::Auth(format!("Authentication failed: {err_msg}")));
-            }
-        }
-    };
+    // Authenticate: try OAuth, fail with error if credentials exist but are broken.
+    // (In no-auth mode, `resolve_token` skips this entirely — see `auth::no_auth_mode`.)
+    let (token, auth_method) = auth::resolve_token(&scopes)
+        .await
+        .map_err(|e| GwsError::Auth(format!("Authentication failed: {e:#}")))?;
 
     // Execute
     executor::execute_method(

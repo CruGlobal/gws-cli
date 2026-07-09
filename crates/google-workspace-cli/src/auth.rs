@@ -34,6 +34,29 @@ const PROXY_ENV_VARS: &[&str] = &[
     "ALL_PROXY",
 ];
 
+/// Env var that opts into "no auth" mode: the CLI skips credential acquisition
+/// entirely and sends requests with no `Authorization` header at all.
+///
+/// This is for deployments behind a credential-injecting network proxy (e.g.
+/// gapx's principal-bound grants, fronted by an Agent Proxy that strips any
+/// client-set `Authorization` header and injects its own). In that setup the
+/// CLI has nothing to authenticate *with* — trust lives entirely in the
+/// network path — so acquiring or attaching a token client-side is not just
+/// unnecessary but wrong (a stray header could be mistaken for a real
+/// credential downstream).
+///
+/// Named as an enum-style string (`none`) rather than a boolean so future auth
+/// modes can be added without a breaking rename.
+const AUTH_MODE_ENV_VAR: &str = "GOOGLE_WORKSPACE_CLI_AUTH";
+
+/// Returns `true` when [`AUTH_MODE_ENV_VAR`] is set to `none` (case-insensitive,
+/// surrounding whitespace ignored).
+pub fn no_auth_mode() -> bool {
+    std::env::var(AUTH_MODE_ENV_VAR)
+        .map(|v| v.trim().eq_ignore_ascii_case("none"))
+        .unwrap_or(false)
+}
+
 /// Response from Google's token endpoint
 #[derive(Debug, Deserialize)]
 struct TokenResponse {
@@ -212,6 +235,17 @@ impl AccessTokenProvider for FakeTokenProvider {
 ///    - Well-known ADC path: `~/.config/gcloud/application_default_credentials.json`
 ///      (populated by `gcloud auth application-default login`)
 pub async fn get_token(scopes: &[&str]) -> anyhow::Result<String> {
+    // No-auth mode: skip credential loading / token acquisition entirely.
+    // Any configured credentials (env vars, credential files, ADC) are
+    // deliberately ignored — the empty string is a sentinel meaning "no
+    // Authorization header", consumed via `maybe_bearer_auth` below.
+    if no_auth_mode() {
+        tracing::debug!(
+            "{AUTH_MODE_ENV_VAR}=none: skipping credential acquisition, sending no Authorization header"
+        );
+        return Ok(String::new());
+    }
+
     // 0. Direct token from env var (highest priority, bypasses all credential loading)
     if let Ok(token) = std::env::var("GOOGLE_WORKSPACE_CLI_TOKEN") {
         if !token.is_empty() {
@@ -227,6 +261,58 @@ pub async fn get_token(scopes: &[&str]) -> anyhow::Result<String> {
 
     let creds = load_credentials_inner(creds_file.as_deref(), &enc_path, &default_path).await?;
     get_token_inner(scopes, creds, &token_cache).await
+}
+
+/// Resolve `(token, auth_method)` for callers that hand both to
+/// [`crate::executor::execute_method`] (or build a request the same way).
+///
+/// Centralizes the three outcomes every such call site needs:
+/// - [`no_auth_mode`] active → `(None, AuthMethod::None)`, without even trying
+///   [`get_token`] (scopes are irrelevant client-side in this mode).
+/// - No credentials configured at all → `(None, AuthMethod::None)`, matching
+///   pre-existing "unauthenticated" behavior for public APIs.
+/// - Any other error (broken/undecryptable credentials, expired refresh
+///   token, ...) → propagated, since the user has credentials that should
+///   have worked.
+pub async fn resolve_token(
+    scopes: &[&str],
+) -> anyhow::Result<(Option<String>, crate::executor::AuthMethod)> {
+    if no_auth_mode() {
+        return Ok((None, crate::executor::AuthMethod::None));
+    }
+    match get_token(scopes).await {
+        Ok(t) => Ok((Some(t), crate::executor::AuthMethod::OAuth)),
+        Err(e) => {
+            // NB: matches the bail!() message in auth::load_credentials_inner
+            if format!("{e:#}").starts_with("No credentials found") {
+                Ok((None, crate::executor::AuthMethod::None))
+            } else {
+                Err(e)
+            }
+        }
+    }
+}
+
+/// Extension trait for conditionally attaching a bearer token to a request.
+///
+/// [`get_token`] returns an empty string as a sentinel when [`no_auth_mode`]
+/// is active, meaning "no credentials were acquired — send no `Authorization`
+/// header at all" (not `Authorization: Bearer` with an empty value). Outside
+/// no-auth mode `get_token` never returns an empty string, so this is
+/// equivalent to [`bearer_auth`](reqwest::RequestBuilder::bearer_auth) for
+/// every existing caller.
+pub trait MaybeBearerAuth {
+    fn maybe_bearer_auth(self, token: &str) -> Self;
+}
+
+impl MaybeBearerAuth for reqwest::RequestBuilder {
+    fn maybe_bearer_auth(self, token: &str) -> Self {
+        if token.is_empty() {
+            self
+        } else {
+            self.bearer_auth(token)
+        }
+    }
 }
 
 /// Check if HTTP proxy environment variables are set
@@ -992,5 +1078,131 @@ mod tests {
         let _config_guard = EnvVarGuard::remove("GOOGLE_WORKSPACE_CLI_CONFIG_DIR");
 
         assert_eq!(get_quota_project(), Some("my-project-123".to_string()));
+    }
+
+    // ── No-auth mode ────────────────────────────────────────────────────
+
+    #[test]
+    #[serial_test::serial]
+    fn no_auth_mode_true_for_none() {
+        let _guard = EnvVarGuard::set(AUTH_MODE_ENV_VAR, "none");
+        assert!(no_auth_mode());
+    }
+
+    #[test]
+    #[serial_test::serial]
+    fn no_auth_mode_is_case_and_whitespace_insensitive() {
+        let _guard = EnvVarGuard::set(AUTH_MODE_ENV_VAR, "  None  ");
+        assert!(no_auth_mode());
+        let _guard = EnvVarGuard::set(AUTH_MODE_ENV_VAR, "NONE");
+        assert!(no_auth_mode());
+    }
+
+    #[test]
+    #[serial_test::serial]
+    fn no_auth_mode_false_when_unset() {
+        let _guard = EnvVarGuard::remove(AUTH_MODE_ENV_VAR);
+        assert!(!no_auth_mode());
+    }
+
+    #[test]
+    #[serial_test::serial]
+    fn no_auth_mode_false_for_unrecognized_value() {
+        // Forward-compat: unknown values don't silently disable auth.
+        let _guard = EnvVarGuard::set(AUTH_MODE_ENV_VAR, "oauth2");
+        assert!(!no_auth_mode());
+    }
+
+    #[tokio::test]
+    #[serial_test::serial]
+    async fn get_token_short_circuits_in_no_auth_mode() {
+        // Even with a token env var configured, no-auth mode must skip
+        // credential acquisition entirely and never error.
+        let _auth_guard = EnvVarGuard::set(AUTH_MODE_ENV_VAR, "none");
+        let _token_guard = EnvVarGuard::set("GOOGLE_WORKSPACE_CLI_TOKEN", "should-be-ignored");
+
+        let result = get_token(&["https://www.googleapis.com/auth/drive"]).await;
+
+        assert_eq!(result.unwrap(), "");
+    }
+
+    #[tokio::test]
+    #[serial_test::serial]
+    async fn resolve_token_returns_none_in_no_auth_mode() {
+        let _auth_guard = EnvVarGuard::set(AUTH_MODE_ENV_VAR, "none");
+        let _token_guard = EnvVarGuard::set("GOOGLE_WORKSPACE_CLI_TOKEN", "should-be-ignored");
+
+        let (token, method) = resolve_token(&["https://www.googleapis.com/auth/drive"])
+            .await
+            .unwrap();
+
+        assert_eq!(token, None);
+        assert_eq!(method, crate::executor::AuthMethod::None);
+    }
+
+    #[tokio::test]
+    #[serial_test::serial]
+    async fn resolve_token_returns_oauth_when_token_available() {
+        let _auth_guard = EnvVarGuard::remove(AUTH_MODE_ENV_VAR);
+        let _token_guard = EnvVarGuard::set("GOOGLE_WORKSPACE_CLI_TOKEN", "a-real-token");
+
+        let (token, method) = resolve_token(&["https://www.googleapis.com/auth/drive"])
+            .await
+            .unwrap();
+
+        assert_eq!(token, Some("a-real-token".to_string()));
+        assert_eq!(method, crate::executor::AuthMethod::OAuth);
+    }
+
+    #[tokio::test]
+    #[serial_test::serial]
+    async fn resolve_token_returns_none_when_no_credentials_configured() {
+        let tmp = tempfile::tempdir().unwrap();
+        let _auth_guard = EnvVarGuard::remove(AUTH_MODE_ENV_VAR);
+        let _token_guard = EnvVarGuard::remove("GOOGLE_WORKSPACE_CLI_TOKEN");
+        let _creds_guard = EnvVarGuard::remove("GOOGLE_WORKSPACE_CLI_CREDENTIALS_FILE");
+        let _config_guard = EnvVarGuard::set("GOOGLE_WORKSPACE_CLI_CONFIG_DIR", tmp.path());
+        let _home_guard = EnvVarGuard::set("HOME", tmp.path());
+        let _adc_guard = EnvVarGuard::remove("GOOGLE_APPLICATION_CREDENTIALS");
+
+        let (token, method) = resolve_token(&["https://www.googleapis.com/auth/drive"])
+            .await
+            .unwrap();
+
+        assert_eq!(token, None);
+        assert_eq!(method, crate::executor::AuthMethod::None);
+    }
+
+    // ── maybe_bearer_auth ───────────────────────────────────────────────
+
+    #[test]
+    fn maybe_bearer_auth_skips_header_for_empty_token() {
+        let client = reqwest::Client::new();
+        let request = client
+            .get("https://example.invalid/")
+            .maybe_bearer_auth("")
+            .build()
+            .unwrap();
+
+        assert!(request
+            .headers()
+            .get(reqwest::header::AUTHORIZATION)
+            .is_none());
+    }
+
+    #[test]
+    fn maybe_bearer_auth_attaches_header_for_nonempty_token() {
+        let client = reqwest::Client::new();
+        let request = client
+            .get("https://example.invalid/")
+            .maybe_bearer_auth("my-token")
+            .build()
+            .unwrap();
+
+        let header = request
+            .headers()
+            .get(reqwest::header::AUTHORIZATION)
+            .expect("Authorization header should be present");
+        assert_eq!(header, "Bearer my-token");
     }
 }
