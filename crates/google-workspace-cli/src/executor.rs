@@ -755,8 +755,17 @@ fn handle_error_response<T>(
     error_body: &str,
     auth_method: &AuthMethod,
 ) -> Result<T, GwsError> {
-    // If 401/403 and no auth was provided, give a helpful message
-    if (status.as_u16() == 401 || status.as_u16() == 403) && *auth_method == AuthMethod::None {
+    // If 401/403 and no auth was provided, give a helpful "log in" hint —
+    // but ONLY when the user has actually forgotten to authenticate. In no-auth
+    // mode (`GOOGLE_WORKSPACE_CLI_AUTH=none`) `AuthMethod::None` is the NORMAL
+    // state: credentials are injected by a network proxy that enforces its own
+    // authorization policy, so a 401/403 is the proxy's real denial. Masking it
+    // with "run `gws auth login`" is wrong and hides the actual reason, so we
+    // fall through to normal error-body parsing and surface it verbatim.
+    if (status.as_u16() == 401 || status.as_u16() == 403)
+        && *auth_method == AuthMethod::None
+        && !crate::auth::no_auth_mode()
+    {
         return Err(GwsError::Auth(
             "Access denied. No credentials provided. Run `gws auth login` or set \
              GOOGLE_WORKSPACE_CLI_CREDENTIALS_FILE to an OAuth credentials JSON file."
@@ -1942,8 +1951,48 @@ mod tests {
         assert_eq!(url, "https://slides.googleapis.com/v1/presentations/abc123");
     }
 
+    /// RAII guard that saves the current value of an environment variable and
+    /// restores it when dropped, so env-var-dependent tests don't leak state.
+    struct EnvVarGuard {
+        name: String,
+        original: Option<std::ffi::OsString>,
+    }
+
+    impl EnvVarGuard {
+        fn set(name: &str, value: impl AsRef<std::ffi::OsStr>) -> Self {
+            let original = std::env::var_os(name);
+            std::env::set_var(name, value);
+            Self {
+                name: name.to_string(),
+                original,
+            }
+        }
+
+        fn remove(name: &str) -> Self {
+            let original = std::env::var_os(name);
+            std::env::remove_var(name);
+            Self {
+                name: name.to_string(),
+                original,
+            }
+        }
+    }
+
+    impl Drop for EnvVarGuard {
+        fn drop(&mut self) {
+            match &self.original {
+                Some(v) => std::env::set_var(&self.name, v),
+                None => std::env::remove_var(&self.name),
+            }
+        }
+    }
+
     #[test]
+    #[serial_test::serial]
     fn test_handle_error_response_401() {
+        // Forgot-to-log-in case: no-auth mode is NOT active, so the helpful
+        // "run `gws auth login`" hint fires.
+        let _guard = EnvVarGuard::remove("GOOGLE_WORKSPACE_CLI_AUTH");
         let err = handle_error_response::<()>(
             reqwest::StatusCode::UNAUTHORIZED,
             "Unauthorized",
@@ -1953,6 +2002,77 @@ mod tests {
         match err {
             GwsError::Auth(msg) => assert!(msg.contains("Access denied")),
             _ => panic!("Expected Auth error"),
+        }
+    }
+
+    #[test]
+    #[serial_test::serial]
+    fn test_handle_error_response_403_no_auth_mode_surfaces_real_message() {
+        // In no-auth mode, AuthMethod::None is normal and a 403 is the proxy's
+        // real denial. The proxy's error.message must be surfaced verbatim, NOT
+        // masked with "No credentials provided".
+        let _guard = EnvVarGuard::set("GOOGLE_WORKSPACE_CLI_AUTH", "none");
+        let json_err = json!({
+            "error": {
+                "code": 403,
+                "message": "files.list requires a parents constraint (global search is denied)",
+                "errors": [{ "reason": "policyDenied" }]
+            }
+        })
+        .to_string();
+
+        let err = handle_error_response::<()>(
+            reqwest::StatusCode::FORBIDDEN,
+            &json_err,
+            &AuthMethod::None,
+        )
+        .unwrap_err();
+        match err {
+            GwsError::Api {
+                code,
+                message,
+                reason,
+                ..
+            } => {
+                assert_eq!(code, 403);
+                assert!(
+                    message.contains("global search is denied"),
+                    "expected proxy message, got: {message}"
+                );
+                assert!(
+                    !message.contains("No credentials provided"),
+                    "proxy denial must not be masked as a credentials error"
+                );
+                assert_eq!(reason, "policyDenied");
+            }
+            other => panic!("Expected Api error, got {other:?}"),
+        }
+    }
+
+    #[test]
+    #[serial_test::serial]
+    fn test_handle_error_response_401_no_auth_mode_non_json_body_passes_through() {
+        // Non-JSON proxy body in no-auth mode: fall through to the raw httpError
+        // passthrough rather than the "No credentials provided" hint.
+        let _guard = EnvVarGuard::set("GOOGLE_WORKSPACE_CLI_AUTH", "none");
+        let err = handle_error_response::<()>(
+            reqwest::StatusCode::UNAUTHORIZED,
+            "upstream proxy: default deny",
+            &AuthMethod::None,
+        )
+        .unwrap_err();
+        match err {
+            GwsError::Api {
+                code,
+                message,
+                reason,
+                ..
+            } => {
+                assert_eq!(code, 401);
+                assert_eq!(message, "upstream proxy: default deny");
+                assert_eq!(reason, "httpError");
+            }
+            other => panic!("Expected Api error, got {other:?}"),
         }
     }
 
