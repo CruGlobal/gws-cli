@@ -2,7 +2,7 @@
 name: gws-classroom
 description: "Google Classroom: Manage classes, rosters, and coursework."
 metadata:
-  version: 0.24.1
+  version: 0.24.2
   openclaw:
     category: "productivity"
     requires:
