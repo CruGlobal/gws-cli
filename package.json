@@ -1,6 +1,6 @@
 {
   "name": "gws-cli",
-  "version": "0.24.1",
+  "version": "0.24.2",
   "private": true,
   "description": "gws-cli — community-maintained fork of the Google Workspace CLI; dynamic command surface from Discovery Service",
   "license": "Apache-2.0",
