@@ -2,7 +2,7 @@
 name: recipe-create-task-list
 description: "Set up a new Google Tasks list with initial tasks."
 metadata:
-  version: 0.24.2
+  version: 0.24.3
   openclaw:
     category: "recipe"
     domain: "productivity"
