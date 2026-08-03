@@ -2,7 +2,7 @@
 name: gws-drive-upload
 description: "Google Drive: Upload a file with automatic metadata."
 metadata:
-  version: 0.24.2
+  version: 0.24.3
   openclaw:
     category: "productivity"
     requires:
