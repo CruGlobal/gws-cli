@@ -254,7 +254,7 @@ The `gws-shared` skill includes an `install` block so OpenClaw auto-installs the
 
 </details>
 
-## Antigravity CLI Plugin
+## Antigravity CLI Plugin (formally "Gemini CLI")
 
 1. Authenticate the CLI first:
 
