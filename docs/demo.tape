@@ -17,9 +17,9 @@ Set LineHeight 1.3
 
 # ── Setup (hidden) ──
 Hide
-# Mock gemini CLI for deterministic demo
-Type 'function gemini() { echo "Why do Java developers wear glasses? Because they don'"'"'t C#."; }' Enter
-Type "export -f gemini" Enter
+# Mock agy CLI for deterministic demo
+Type 'function agy() { echo "Why do Java developers wear glasses? Because they don'"'"'t C#."; }' Enter
+Type "export -f agy" Enter
 Type "export PATH=$PWD/target/release:$PWD/target/debug:$PATH" Enter
 Type "set -e" Enter
 Sleep 1s
@@ -130,7 +130,7 @@ Sleep 1s
 Show
 Sleep 1s
 
-Type "JOKE=$(gemini 'tell me a joke')" Enter
+Type "JOKE=$(agy -p 'tell me a joke')" Enter
 Sleep 1s
 
 Type `MSG=$(echo -e "To: justin@example.com\nSubject: joke of the day\n\n$JOKE" | base64 | tr -d '\n' | tr '+/' '-_' | tr -d '=')` Enter

@@ -1,4 +1,4 @@
-# Google Workspace CLI (`gws`) Context
+# Google Workspace CLI (`gws`) Guidance
 
 The `gws` CLI provides dynamic access to Google Workspace APIs (Drive, Gmail, Calendar, Sheets, Admin, etc.) by parsing Discovery Documents at runtime.
 
