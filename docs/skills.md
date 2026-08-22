@@ -18,6 +18,7 @@ Core Google Workspace API skills.
 | [gws-slides](../skills/gws-slides/SKILL.md) | Google Slides: Read and write presentations. |
 | [gws-tasks](../skills/gws-tasks/SKILL.md) | Google Tasks: Manage task lists and tasks. |
 | [gws-people](../skills/gws-people/SKILL.md) | Google People: Manage contacts and profiles. |
+| [gws-chat](../skills/gws-chat/SKILL.md) | Google Chat: Manage Chat spaces and messages. |
 | [gws-classroom](../skills/gws-classroom/SKILL.md) | Google Classroom: Manage classes, rosters, and coursework. |
 | [gws-forms](../skills/gws-forms/SKILL.md) | Read and write Google Forms. |
 | [gws-keep](../skills/gws-keep/SKILL.md) | Manage Google Keep notes. |
@@ -46,6 +47,7 @@ Shortcut commands for common operations.
 | [gws-calendar-insert](../skills/gws-calendar-insert/SKILL.md) | Google Calendar: Create a new event. |
 | [gws-calendar-agenda](../skills/gws-calendar-agenda/SKILL.md) | Google Calendar: Show upcoming events across all calendars. |
 | [gws-docs-write](../skills/gws-docs-write/SKILL.md) | Google Docs: Append text to a document. |
+| [gws-chat-send](../skills/gws-chat-send/SKILL.md) | Google Chat: Send a message to a space. |
 | [gws-events-subscribe](../skills/gws-events-subscribe/SKILL.md) | Google Workspace Events: Subscribe to Workspace events and stream them as NDJSON. |
 | [gws-events-renew](../skills/gws-events-renew/SKILL.md) | Google Workspace Events: Renew/reactivate Workspace Events subscriptions. |
 | [gws-modelarmor-sanitize-prompt](../skills/gws-modelarmor-sanitize-prompt/SKILL.md) | Google Model Armor: Sanitize a user prompt through a Model Armor template. |
