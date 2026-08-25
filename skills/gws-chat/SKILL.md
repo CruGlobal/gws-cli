@@ -52,6 +52,7 @@ gws chat <resource> <method> [flags]
   - `search` — Returns a list of spaces in a Google Workspace organization. For an example, see [Search for and manage spaces](https://developers.google.com/workspace/chat/search-manage-admin). When `use_admin_access` is set to `false`, the results are limited to spaces where the calling user is a joined member. To search with administrator privileges, set `use_admin_access` to `true`.
   - `setup` — Creates a space and adds specified users to it. The calling user is automatically added to the space, and shouldn't be specified as a membership in the request. For an example, see [Set up a space with initial members](https://developers.google.com/workspace/chat/set-up-spaces). To specify the human members to add, add memberships with the appropriate `membership.member.name`. To add a human user, use `users/{user}`, where `{user}` can be the email address for the user.
   - `members` — Operations on the 'members' resource
+  - `messagePins` — Operations on the 'messagePins' resource
   - `messages` — Operations on the 'messages' resource
   - `spaceEvents` — Operations on the 'spaceEvents' resource
 
