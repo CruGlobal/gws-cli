@@ -1,6 +1,0 @@
-{
-  "name": "gws-cli",
-  "version": "latest",
-  "description": "gws-cli (community fork) — CLI for managing Google Workspace resources dynamically using Discovery APIs.",
-  "contextFileName": "CONTEXT.md"
-}
