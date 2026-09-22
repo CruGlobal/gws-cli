@@ -101,6 +101,8 @@ jobs:
             directory: first line exactly `MERGE` or `HOLD`, then a short rationale
             citing what's in the release. Do NOT merge, tag, or release anything.
           claude_args: "--max-turns 25 --allowedTools Bash(gh:*),Read,Write,Glob,Grep"
+          # TEMP: debug silent auth failure; logs are public, revert once fixed.
+          show_full_output: true
 
       - name: Read verdict
         id: verdict
