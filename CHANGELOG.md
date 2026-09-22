@@ -1,5 +1,12 @@
 # @googleworkspace/cli
 
+## 0.24.4
+
+### Patch Changes
+
+- 95a2c36: Show full Claude output in weekly release workflow logs
+- 2805dd9: Sync generated skills with latest Google Discovery API specs
+
 ## 0.24.3
 
 ### Patch Changes
