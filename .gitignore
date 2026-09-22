@@ -48,3 +48,5 @@ docs/plans/
 # Generated
 demo.mp4
 download.html
+# Swift PM cache (lefthook shim fallback: `swift package lefthook`)
+.build/
