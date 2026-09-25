@@ -106,7 +106,10 @@ async fn run() -> Result<(), GwsError> {
     }
 
     if is_version_flag(&first_arg) {
-        println!("gws {}", env!("CARGO_PKG_VERSION"));
+        println!(
+            "{}",
+            version_line(env!("CARGO_PKG_VERSION"), env!("GWS_GIT_SHA"))
+        );
         println!("This is not an officially supported Google product.");
         return Ok(());
     }
@@ -513,6 +516,14 @@ fn is_version_flag(arg: &str) -> bool {
     matches!(arg, "--version" | "-V" | "version")
 }
 
+fn version_line(version: &str, git_sha: &str) -> String {
+    if git_sha.is_empty() {
+        format!("gws {version}")
+    } else {
+        format!("gws {version} ({git_sha})")
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -602,6 +613,15 @@ mod tests {
         assert!(!is_version_flag("--ver"));
         assert!(!is_version_flag("v"));
         assert!(!is_version_flag("drive"));
+    }
+
+    #[test]
+    fn test_version_line() {
+        assert_eq!(version_line("1.2.3", ""), "gws 1.2.3");
+        assert_eq!(
+            version_line("1.2.3", "abc1234def"),
+            "gws 1.2.3 (abc1234def)"
+        );
     }
 
     #[test]
