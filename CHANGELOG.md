@@ -1,5 +1,13 @@
 # @googleworkspace/cli
 
+## 0.24.5
+
+### Patch Changes
+
+- ed5b83a: Bump transitive js-yaml for security advisories; CI cleanup
+- 6ccbc38: Sync generated skills with latest Google Discovery API specs
+- a5f8925: `gws --version` shows git commit when built from a git checkout
+
 ## 0.24.4
 
 ### Patch Changes
