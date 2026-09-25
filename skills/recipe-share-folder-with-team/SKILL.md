@@ -2,7 +2,7 @@
 name: recipe-share-folder-with-team
 description: "Share a Google Drive folder and all its contents with a list of collaborators."
 metadata:
-  version: 0.24.4
+  version: 0.24.5
   openclaw:
     category: "recipe"
     domain: "productivity"

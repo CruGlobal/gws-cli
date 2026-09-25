@@ -2,7 +2,7 @@
 name: gws-events-renew
 description: "Google Workspace Events: Renew/reactivate Workspace Events subscriptions."
 metadata:
-  version: 0.24.4
+  version: 0.24.5
   openclaw:
     category: "productivity"
     requires:

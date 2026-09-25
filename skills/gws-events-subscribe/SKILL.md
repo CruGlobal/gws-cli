@@ -2,7 +2,7 @@
 name: gws-events-subscribe
 description: "Google Workspace Events: Subscribe to Workspace events and stream them as NDJSON."
 metadata:
-  version: 0.24.4
+  version: 0.24.5
   openclaw:
     category: "productivity"
     requires:
