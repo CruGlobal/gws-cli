@@ -2,7 +2,7 @@
 name: gws-docs-write
 description: "Google Docs: Append text to a document."
 metadata:
-  version: 0.24.4
+  version: 0.24.5
   openclaw:
     category: "productivity"
     requires:
