@@ -813,9 +813,17 @@ mod tests {
     // ---- KeyringBackend::from_env tests ----
 
     #[test]
+    #[serial_test::serial]
     fn backend_default_is_keyring() {
         // from_env reads the env; default (empty/unset) → Keyring
-        assert_eq!(KeyringBackend::from_env(), KeyringBackend::Keyring);
+        const VAR: &str = "GOOGLE_WORKSPACE_CLI_KEYRING_BACKEND";
+        let saved = std::env::var_os(VAR);
+        std::env::remove_var(VAR);
+        let backend = KeyringBackend::from_env();
+        if let Some(v) = saved {
+            std::env::set_var(VAR, v);
+        }
+        assert_eq!(backend, KeyringBackend::Keyring);
     }
 
     // ---- read_key_file tests ----

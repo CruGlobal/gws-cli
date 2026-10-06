@@ -850,7 +850,7 @@ mod tests {
         let enc_path = dir.path().join("credentials.enc");
 
         // Isolate global config dir to prevent races with other tests
-        std::env::set_var("GOOGLE_WORKSPACE_CLI_CONFIG_DIR", dir.path());
+        let _config_guard = EnvVarGuard::set("GOOGLE_WORKSPACE_CLI_CONFIG_DIR", dir.path());
 
         // Encrypt and write
         let encrypted = crate::credential_store::encrypt(json.as_bytes()).unwrap();
