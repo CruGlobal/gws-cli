@@ -77,4 +77,4 @@ keyring = { version = "3.6.3", features = ["windows-native"] }
 keyring = "3.6.3"
 
 [dev-dependencies]
-serial_test = "3.4.0"
+serial_test = "4.0.1"
