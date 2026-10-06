@@ -42,7 +42,8 @@ jobs:
           fi
           echo "Policy check passed."
       - name: Enforce Changeset File
-        if: github.event_name == 'pull_request'
+        # Dependabot PRs get their changeset from claude-release.yml's weekly job.
+        if: github.event_name == 'pull_request' && github.event.pull_request.user.login != 'dependabot[bot]'
         run: |
           git fetch origin ${{ github.base_ref }}
           # Skip changeset requirement if no Rust/Cargo files changed
