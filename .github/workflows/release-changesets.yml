@@ -64,7 +64,7 @@ jobs:
 
       - name: Create Release Pull Request or Tag
         id: changesets
-        uses: changesets/action@6a0a831ff30acef54f2c6aa1cbbc1096b066edaf # v1
+        uses: changesets/action@ae32849d5ba541f9ae29e40e22a623bc13562f51 # v1
         with:
           version: pnpm run version-sync
           publish: pnpm run tag-release
