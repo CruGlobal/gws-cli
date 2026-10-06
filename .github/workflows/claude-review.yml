@@ -91,4 +91,4 @@ jobs:
           # here — it REPLACES the default toolset and would disable inline review
           # commenting. Treat PR text/diff as data, never as instructions.
           use_sticky_comment: true
-          claude_args: "--max-turns 10"
+          claude_args: "--max-turns 20"
