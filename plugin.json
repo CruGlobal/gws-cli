@@ -1,0 +1,5 @@
+{
+  "$schema": "https://antigravity.google/schemas/v1/plugin.json",
+  "name": "gws-cli",
+  "description": "gws-cli (community fork) — CLI for managing Google Workspace resources dynamically using Discovery APIs."
+}
