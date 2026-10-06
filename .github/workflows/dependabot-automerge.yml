@@ -12,9 +12,10 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-# Enables GitHub auto-merge on Dependabot PRs for patch and minor bumps.
+# Enables GitHub auto-merge on Dependabot PRs for non-breaking bumps.
 # The merge only completes once the required "CI Gate" status check passes
-# (see branch protection on main). Major bumps are left for manual review.
+# (see branch protection on main). Breaking bumps (major, or 0.x minor) go to
+# claude-dependabot-major.yml instead.
 name: Dependabot auto-merge
 
 on:
@@ -37,11 +38,22 @@ jobs:
         with:
           github-token: ${{ secrets.GITHUB_TOKEN }}
 
-      - name: Enable auto-merge for patch and minor updates
-        if: |
-          steps.metadata.outputs.update-type == 'version-update:semver-patch'
-          || steps.metadata.outputs.update-type == 'version-update:semver-minor'
+      # Below 1.0, semver treats a minor bump (0.10 -> 0.11) as breaking.
+      - name: Enable auto-merge for non-breaking updates
         env:
           PR_URL: ${{ github.event.pull_request.html_url }}
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        run: gh pr merge --auto --squash "$PR_URL"
+          UPDATE_TYPE: ${{ steps.metadata.outputs.update-type }}
+          PREV: ${{ steps.metadata.outputs.previous-version }}
+        run: |
+          set -euo pipefail
+          case "$UPDATE_TYPE" in
+            version-update:semver-patch) ;;
+            version-update:semver-minor)
+              if [[ "$PREV" == 0.* ]]; then
+                echo "0.x minor bump ($PREV) is breaking; leaving for Claude adapt."
+                exit 0
+              fi ;;
+            *) echo "Not auto-merging $UPDATE_TYPE."; exit 0 ;;
+          esac
+          gh pr merge --auto --squash "$PR_URL"

@@ -12,10 +12,11 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-# Claude handles Dependabot MAJOR version bumps: it reads the changelog, adapts
-# our code to breaking changes, verifies with cargo build/test, pushes the fix to
-# the Dependabot branch, and enables auto-merge only if it is confident. Patch and
-# minor bumps are handled by dependabot-automerge.yml and never reach here.
+# Claude handles Dependabot breaking bumps (major, or 0.x minor, which semver
+# treats as breaking): it reads the changelog, adapts our code to breaking
+# changes, verifies with cargo build/test, pushes the fix to the Dependabot
+# branch, and enables auto-merge only if it is confident. Other bumps are
+# handled by dependabot-automerge.yml and never reach here.
 #
 # SECURITY — read before editing:
 #   This workflow uses `pull_request_target` because Dependabot `pull_request`
@@ -63,7 +64,7 @@ jobs:
         with:
           github-token: ${{ secrets.GITHUB_TOKEN }}
 
-      # Run only for MAJOR bumps AND only when the PR head is still Dependabot's
+      # Run only for breaking bumps AND only when the PR head is still Dependabot's
       # own commit. After Claude pushes an adaptation commit, `synchronize` fires
       # again; the head author is then the Claude App, so we skip to avoid a loop
       # (auto-merge was already enabled on the first pass).
@@ -72,12 +73,16 @@ jobs:
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           UPDATE_TYPE: ${{ steps.metadata.outputs.update-type }}
+          PREV: ${{ steps.metadata.outputs.previous-version }}
           PR: ${{ github.event.pull_request.number }}
         run: |
           set -euo pipefail
           last_author=$(gh pr view "$PR" -R "$GITHUB_REPOSITORY" --json commits --jq '.commits[-1].authors[0].login')
           echo "update-type=$UPDATE_TYPE  last-commit-author=$last_author"
-          if [ "$UPDATE_TYPE" = "version-update:semver-major" ] && [ "$last_author" = "dependabot[bot]" ]; then
+          breaking=false
+          if [ "$UPDATE_TYPE" = "version-update:semver-major" ]; then breaking=true; fi
+          if [ "$UPDATE_TYPE" = "version-update:semver-minor" ] && [[ "$PREV" == 0.* ]]; then breaking=true; fi
+          if [ "$breaking" = true ] && [ "$last_author" = "dependabot[bot]" ]; then
             echo "run=true" >> "$GITHUB_OUTPUT"
           else
             echo "run=false" >> "$GITHUB_OUTPUT"
@@ -113,10 +118,10 @@ jobs:
           github_token: ${{ secrets.GITHUB_TOKEN }}
           allowed_bots: "dependabot[bot]"
           prompt: |
-            A Dependabot MAJOR upgrade of `${{ needs.guard.outputs.dep }}`
+            A Dependabot breaking upgrade (major, or 0.x minor) of `${{ needs.guard.outputs.dep }}`
             (${{ needs.guard.outputs.prev }} -> ${{ needs.guard.outputs.new }}) is
             open on this branch. Your job: make gws-cli build and pass tests on the
-            new major version, or determine it needs a human.
+            new version, or determine it needs a human.
 
             The dependency may be a Rust crate (Cargo.toml), a GitHub Action
             (.github/workflows/*.yml), or an npm package (package.json, npm/).
@@ -152,30 +157,30 @@ jobs:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           PR_URL: ${{ github.event.pull_request.html_url }}
           HEAD_SHA: ${{ github.event.pull_request.head.sha }}
-          # Asked to review whenever a major bump can't auto-merge.
+          # Asked to review whenever a breaking bump can't auto-merge.
           REVIEWER: mattdrees
         run: |
           set -euo pipefail
           if [ ! -f claude-verdict.txt ]; then
             echo "::warning::No verdict file produced; leaving PR for manual review."
-            gh pr comment "$PR_URL" --body "🤖 Claude did not produce a verdict for this major bump. Please review manually."
+            gh pr comment "$PR_URL" --body "🤖 Claude did not produce a verdict for this breaking bump. Please review manually."
             gh pr edit "$PR_URL" --add-reviewer "$REVIEWER"
             exit 0
           fi
           verdict=$(head -n1 claude-verdict.txt | tr -d '[:space:]')
           body=$(cat claude-verdict.txt)
           if [ "$verdict" = "MERGE" ] && [ "$(git rev-parse HEAD)" != "$HEAD_SHA" ]; then
-            gh pr comment "$PR_URL" --body "🤖 Claude adapted to this major bump, but its push can't trigger CI (GITHUB_TOKEN). A maintainer must rerun CI and merge.
+            gh pr comment "$PR_URL" --body "🤖 Claude adapted to this breaking bump, but its push can't trigger CI (GITHUB_TOKEN). A maintainer must rerun CI and merge.
 
           $body"
             gh pr edit "$PR_URL" --add-reviewer "$REVIEWER"
           elif [ "$verdict" = "MERGE" ]; then
-            gh pr comment "$PR_URL" --body "🤖 Claude adapted to this major bump and is enabling auto-merge (gated on CI Gate).
+            gh pr comment "$PR_URL" --body "🤖 Claude adapted to this breaking bump and is enabling auto-merge (gated on CI Gate).
 
           $body"
             gh pr merge --auto --squash "$PR_URL"
           else
-            gh pr comment "$PR_URL" --body "🤖 Claude held this major bump for manual review.
+            gh pr comment "$PR_URL" --body "🤖 Claude held this breaking bump for manual review.
 
           $body"
             gh pr edit "$PR_URL" --add-reviewer "$REVIEWER"
