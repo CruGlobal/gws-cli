@@ -75,7 +75,7 @@ jobs:
           PR: ${{ github.event.pull_request.number }}
         run: |
           set -euo pipefail
-          last_author=$(gh pr view "$PR" --json commits --jq '.commits[-1].authors[0].login')
+          last_author=$(gh pr view "$PR" -R "$GITHUB_REPOSITORY" --json commits --jq '.commits[-1].authors[0].login')
           echo "update-type=$UPDATE_TYPE  last-commit-author=$last_author"
           if [ "$UPDATE_TYPE" = "version-update:semver-major" ] && [ "$last_author" = "dependabot[bot]" ]; then
             echo "run=true" >> "$GITHUB_OUTPUT"
@@ -114,13 +114,20 @@ jobs:
             open on this branch. Your job: make gws-cli build and pass tests on the
             new major version, or determine it needs a human.
 
+            The dependency may be a Rust crate (Cargo.toml), a GitHub Action
+            (.github/workflows/*.yml), or an npm package (package.json, npm/).
+
             Steps:
               1. Read the dependency's CHANGELOG / release notes for
                  ${{ needs.guard.outputs.prev }} -> ${{ needs.guard.outputs.new }}
-                 and identify breaking changes that touch our code.
-              2. Edit our source to adapt. Keep the diff minimal and idiomatic.
+                 and identify breaking changes that touch our usage of it.
+              2. Edit our source or workflows to adapt. Keep the diff minimal and idiomatic.
               3. Verify: `cargo build --workspace` and `cargo test --workspace` and
                  `cargo clippy --workspace --all-targets -- -D warnings` must pass.
+                 For a GitHub Action, also check every `uses:` of it against the
+                 breaking changes (removed/renamed inputs and outputs, runner or
+                 Node version requirements, changed defaults), since CI may not
+                 exercise every workflow that uses it.
               4. If everything passes AND the change is low-risk, commit with a clear
                  message and push to this branch, then write `MERGE` on the first
                  line of a file named `claude-verdict.txt` in the repo root.
