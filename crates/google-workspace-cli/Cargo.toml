@@ -58,7 +58,7 @@ chrono-tz = "0.10"
 iana-time-zone = "0.1"
 mail-builder = "1.0"
 async-trait = "0.1.89"
-toml = "0.8"
+toml = "1.1"
 percent-encoding = "2.3.2"
 zeroize = { version = "1.8.2", features = ["derive"] }
 tracing = "0.1"
@@ -77,4 +77,4 @@ keyring = { version = "3.6.3", features = ["windows-native"] }
 keyring = "3.6.3"
 
 [dev-dependencies]
-serial_test = "3.4.0"
+serial_test = "4.0.1"
