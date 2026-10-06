@@ -45,7 +45,7 @@ jobs:
     if: github.event.schedule == '0 12 * * 1'
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v4
         with:
           fetch-depth: 0
           # RELEASE_TOKEN so the PR's push and merge trigger CI and release-changesets.
@@ -97,7 +97,7 @@ jobs:
       pr: ${{ steps.find.outputs.pr }}
       verdict: ${{ steps.verdict.outputs.verdict }}
     steps:
-      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v4
         with:
           fetch-depth: 0
 
