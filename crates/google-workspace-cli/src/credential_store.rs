@@ -20,7 +20,7 @@ use aes_gcm::aead::{Aead, KeyInit, OsRng};
 use aes_gcm::{AeadCore, Aes256Gcm, Nonce};
 
 use keyring::Entry;
-use rand::RngCore;
+use rand::Rng;
 use std::sync::OnceLock;
 use zeroize::Zeroize;
 
@@ -108,7 +108,7 @@ fn read_key_file(path: &std::path::Path) -> Option<[u8; 32]> {
 /// Generate a random 256-bit key.
 fn generate_random_key() -> [u8; 32] {
     let mut key = [0u8; 32];
-    rand::thread_rng().fill_bytes(&mut key);
+    rand::rng().fill_bytes(&mut key);
     key
 }
 
