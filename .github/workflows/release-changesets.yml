@@ -64,12 +64,16 @@ jobs:
 
       - name: Create Release Pull Request or Tag
         id: changesets
-        uses: changesets/action@ae32849d5ba541f9ae29e40e22a623bc13562f51 # v1
+        uses: changesets/action@ae32849d5ba541f9ae29e40e22a623bc13562f51 # v2.1.2
         with:
-          version: pnpm run version-sync
-          publish: pnpm run tag-release
-          commit: 'chore: release versions'
-          title: 'chore: release versions'
-          setupGitUser: false
-        env:
-          GITHUB_TOKEN: ${{ secrets.RELEASE_TOKEN || github.token }}
+          version-script: pnpm run version-sync
+          publish-script: pnpm run tag-release
+          commit-message: 'chore: release versions'
+          pr-title: 'chore: release versions'
+          # v2 pushes via the GitHub API by default; keep git CLI (version-sync stages files).
+          push-with-git-cli: true
+          # tag-release.sh pushes the tag; release.yml creates the GitHub release.
+          create-github-releases: false
+          push-git-tags: false
+          # v2 ignores the GITHUB_TOKEN env var; pass the token explicitly.
+          github-token: ${{ secrets.RELEASE_TOKEN || github.token }}
