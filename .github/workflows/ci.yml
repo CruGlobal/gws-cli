@@ -50,6 +50,7 @@ jobs:
               - 'Cargo.lock'
               - 'build.rs'
               - '.cargo/**'
+              - '.github/workflows/ci.yml'
             nix:
               - 'flake.nix'
               - 'flake.lock'
@@ -72,14 +73,14 @@ jobs:
 
       - name: Setup sccache
         id: sccache
-        uses: mozilla-actions/sccache-action@2df7dbab909c49ab7d3382d05da469f3f975c2d6 # v0.0.7
+        uses: mozilla-actions/sccache-action@fd02668681acd5f960e1372061bee5e3e987195c # v0.0.11
         continue-on-error: true
 
       - name: Enable sccache
         if: steps.sccache.outcome == 'success'
         shell: bash
         run: |
-          if sccache --start-server 2>/dev/null; then
+          if sccache --start-server; then
             echo "RUSTC_WRAPPER=sccache" >> "$GITHUB_ENV"
           else
             echo "::warning::sccache server failed to start, building without cache"
@@ -124,14 +125,14 @@ jobs:
 
       - name: Setup sccache
         id: sccache
-        uses: mozilla-actions/sccache-action@2df7dbab909c49ab7d3382d05da469f3f975c2d6 # v0.0.7
+        uses: mozilla-actions/sccache-action@fd02668681acd5f960e1372061bee5e3e987195c # v0.0.11
         continue-on-error: true
 
       - name: Enable sccache
         if: steps.sccache.outcome == 'success'
         shell: bash
         run: |
-          if sccache --start-server 2>/dev/null; then
+          if sccache --start-server; then
             echo "RUSTC_WRAPPER=sccache" >> "$GITHUB_ENV"
           else
             echo "::warning::sccache server failed to start, building without cache"
@@ -179,14 +180,14 @@ jobs:
 
       - name: Setup sccache
         id: sccache
-        uses: mozilla-actions/sccache-action@2df7dbab909c49ab7d3382d05da469f3f975c2d6 # v0.0.7
+        uses: mozilla-actions/sccache-action@fd02668681acd5f960e1372061bee5e3e987195c # v0.0.11
         continue-on-error: true
 
       - name: Enable sccache
         if: steps.sccache.outcome == 'success'
         shell: bash
         run: |
-          if sccache --start-server 2>/dev/null; then
+          if sccache --start-server; then
             echo "RUSTC_WRAPPER=sccache" >> "$GITHUB_ENV"
           else
             echo "::warning::sccache server failed to start, building without cache"
@@ -245,14 +246,14 @@ jobs:
 
       - name: Setup sccache
         id: sccache
-        uses: mozilla-actions/sccache-action@2df7dbab909c49ab7d3382d05da469f3f975c2d6 # v0.0.7
+        uses: mozilla-actions/sccache-action@fd02668681acd5f960e1372061bee5e3e987195c # v0.0.11
         continue-on-error: true
 
       - name: Enable sccache
         if: steps.sccache.outcome == 'success'
         shell: bash
         run: |
-          if sccache --start-server 2>/dev/null; then
+          if sccache --start-server; then
             echo "RUSTC_WRAPPER=sccache" >> "$GITHUB_ENV"
           else
             echo "::warning::sccache server failed to start, building without cache"
@@ -302,14 +303,14 @@ jobs:
 
       - name: Setup sccache
         id: sccache
-        uses: mozilla-actions/sccache-action@2df7dbab909c49ab7d3382d05da469f3f975c2d6 # v0.0.7
+        uses: mozilla-actions/sccache-action@fd02668681acd5f960e1372061bee5e3e987195c # v0.0.11
         continue-on-error: true
 
       - name: Enable sccache
         if: steps.sccache.outcome == 'success'
         shell: bash
         run: |
-          if sccache --start-server 2>/dev/null; then
+          if sccache --start-server; then
             echo "RUSTC_WRAPPER=sccache" >> "$GITHUB_ENV"
           else
             echo "::warning::sccache server failed to start, building without cache"
