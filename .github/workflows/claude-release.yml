@@ -19,6 +19,10 @@
 # re-triggers release-changesets.yml -> tag-release -> release.yml (a GITHUB_TOKEN
 # merge would NOT re-trigger those workflows).
 #
+# At 12:00 a scripted job first opens an auto-merge PR adding one changeset for
+# the Cargo Dependabot bumps merged since the last tag (Dependabot PRs carry no
+# changeset), so they land in the release PR before the 14:00 assessment.
+#
 # The risk assessment (Claude) and the privileged merge (a plain step holding
 # RELEASE_TOKEN) run in SEPARATE jobs so the release token is never present in the
 # job that runs the model.
@@ -26,7 +30,8 @@ name: Claude Weekly Release
 
 on:
   schedule:
-    - cron: '0 14 * * 1' # Mondays 14:00 UTC
+    - cron: '0 12 * * 1' # Mondays 12:00 UTC: deps changeset
+    - cron: '0 14 * * 1' # Mondays 14:00 UTC: assess + release
   workflow_dispatch:
 
 permissions:
@@ -35,8 +40,58 @@ permissions:
   id-token: write # required for the action to mint its GitHub App token via OIDC
 
 jobs:
+  deps-changeset:
+    name: Dependency changeset
+    if: github.event.schedule == '0 12 * * 1'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
+        with:
+          fetch-depth: 0
+          # RELEASE_TOKEN so the PR's push and merge trigger CI and release-changesets.
+          token: ${{ secrets.RELEASE_TOKEN }}
+
+      - name: Open changeset PR for merged Dependabot bumps
+        env:
+          GH_TOKEN: ${{ secrets.RELEASE_TOKEN }}
+        run: |
+          set -euo pipefail
+          tag=$(git describe --tags --abbrev=0 --match 'v*')
+          since=$(git log -1 --format=%cI "$tag")
+          # Cargo bumps only (actions/npm don't ship), skipping PRs that brought their own changeset.
+          prs=$(gh pr list --state merged -L 200 \
+                  --search "author:app/dependabot merged:>$since" \
+                  --json number,title,headRefName,files \
+                  --jq '.[] | select(.headRefName | startswith("dependabot/cargo/"))
+                        | select([.files[].path | startswith(".changeset/")] | any | not)
+                        | "\(.number)\t\(.title)"')
+          lines=""
+          while IFS=$'\t' read -r num title; do
+            [ -n "$num" ] || continue
+            grep -qs "(#$num)" .changeset/*.md && continue
+            lines+="- ${title#chore(deps): } (#$num)"$'\n'
+          done <<< "$prs"
+          if [ -z "$lines" ]; then
+            echo "No uncovered Dependabot cargo bumps since $tag."
+            exit 0
+          fi
+          day=$(date -u +%F)
+          branch="chore/deps-changeset-$day"
+          printf -- '---\n"gws-cli": patch\n---\n\nDependency updates:\n\n%s' "$lines" > ".changeset/deps-$day.md"
+          cat ".changeset/deps-$day.md"
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git checkout -b "$branch"
+          git add ".changeset/deps-$day.md"
+          git commit -m "chore: changeset for dependency updates since $tag"
+          git push origin "$branch"
+          gh pr create --head "$branch" --title "chore: changeset for dependency updates" \
+            --body "Automated: covers Dependabot cargo bumps merged since $tag, which carry no changeset."
+          gh pr merge "$branch" --auto --squash --delete-branch
+
   assess:
     name: Assess release risk
+    if: github.event.schedule != '0 12 * * 1'
     runs-on: ubuntu-latest
     outputs:
       pr: ${{ steps.find.outputs.pr }}
