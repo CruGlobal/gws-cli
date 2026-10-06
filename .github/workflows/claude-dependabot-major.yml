@@ -29,7 +29,7 @@
 #       cargo-deny, cargo-audit) — Claude cannot merge around it.
 #     - Only Dependabot-authored MAJOR bumps reach the adapt job.
 #     - RELEASE_TOKEN is deliberately NOT present here (it would be readable by the
-#       untrusted build); pushes use the Claude App token, merges use GITHUB_TOKEN.
+#       untrusted build); pushes and merges use GITHUB_TOKEN.
 #   Rotate CLAUDE_CODE_OAUTH_TOKEN if you ever suspect a bad dependency slipped in.
 name: Claude Dependabot Major
 
@@ -100,14 +100,18 @@ jobs:
         with:
           components: clippy
 
-      # Claude adapts the code, verifies locally, commits+pushes to the branch
-      # (via the Claude App token, which re-triggers CI), and records a verdict.
+      # Claude adapts the code, verifies locally, commits+pushes to the branch,
+      # and records a verdict. Uses GITHUB_TOKEN because the Claude App's OIDC
+      # exchange rejects pull_request_target (anthropics/claude-code-action#713).
+      # GITHUB_TOKEN pushes don't trigger CI, so adapted PRs need a manual rerun.
       # Pinned to a release commit (>= v1.0.94 for the env-exfiltration CVE fix);
       # Dependabot keeps it current.
       - name: Claude adapt
         uses: anthropics/claude-code-action@0fe28cdb64e23015219b0e478100b7105fd7dfa1 # v1.0.167
         with:
           claude_code_oauth_token: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}
+          github_token: ${{ secrets.GITHUB_TOKEN }}
+          allowed_bots: "dependabot[bot]"
           prompt: |
             A Dependabot MAJOR upgrade of `${{ needs.guard.outputs.dep }}`
             (${{ needs.guard.outputs.prev }} -> ${{ needs.guard.outputs.new }}) is
@@ -143,6 +147,7 @@ jobs:
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           PR_URL: ${{ github.event.pull_request.html_url }}
+          HEAD_SHA: ${{ github.event.pull_request.head.sha }}
         run: |
           set -euo pipefail
           if [ ! -f claude-verdict.txt ]; then
@@ -152,7 +157,11 @@ jobs:
           fi
           verdict=$(head -n1 claude-verdict.txt | tr -d '[:space:]')
           body=$(cat claude-verdict.txt)
-          if [ "$verdict" = "MERGE" ]; then
+          if [ "$verdict" = "MERGE" ] && [ "$(git rev-parse HEAD)" != "$HEAD_SHA" ]; then
+            gh pr comment "$PR_URL" --body "🤖 Claude adapted to this major bump, but its push can't trigger CI (GITHUB_TOKEN). A maintainer must rerun CI and merge.
+
+          $body"
+          elif [ "$verdict" = "MERGE" ]; then
             gh pr comment "$PR_URL" --body "🤖 Claude adapted to this major bump and is enabling auto-merge (gated on CI Gate).
 
           $body"
