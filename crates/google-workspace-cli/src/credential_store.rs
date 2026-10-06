@@ -16,8 +16,8 @@ use std::path::PathBuf;
 
 use crate::output::sanitize_for_terminal;
 
-use aes_gcm::aead::{Aead, KeyInit, OsRng};
-use aes_gcm::{AeadCore, Aes256Gcm, Nonce};
+use aes_gcm::aead::{Aead, Generate, KeyInit};
+use aes_gcm::{Aes256Gcm, Nonce};
 
 use keyring::Entry;
 use rand::Rng;
@@ -385,7 +385,7 @@ pub fn encrypt(plaintext: &[u8]) -> anyhow::Result<Vec<u8>> {
     let cipher = Aes256Gcm::new_from_slice(&key)
         .map_err(|e| anyhow::anyhow!("Failed to create cipher: {e}"))?;
 
-    let nonce = Aes256Gcm::generate_nonce(&mut OsRng);
+    let nonce = Nonce::generate();
     let ciphertext = cipher
         .encrypt(&nonce, plaintext)
         .map_err(|e| anyhow::anyhow!("Encryption failed: {e}"))?;
@@ -406,8 +406,8 @@ pub fn decrypt(data: &[u8]) -> anyhow::Result<Vec<u8>> {
     let cipher = Aes256Gcm::new_from_slice(&key)
         .map_err(|e| anyhow::anyhow!("Failed to create cipher: {e}"))?;
 
-    let nonce = Nonce::from_slice(&data[..12]);
-    let plaintext = cipher.decrypt(nonce, &data[12..]).map_err(|_| {
+    let nonce = Nonce::try_from(&data[..12]).expect("length checked above");
+    let plaintext = cipher.decrypt(&nonce, &data[12..]).map_err(|_| {
         anyhow::anyhow!(
             "Decryption failed. Credentials may have been created on a different machine. \
                  Run `gws auth logout` and `gws auth login` to re-authenticate."
