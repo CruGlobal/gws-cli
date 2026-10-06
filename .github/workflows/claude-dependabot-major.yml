@@ -148,11 +148,14 @@ jobs:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           PR_URL: ${{ github.event.pull_request.html_url }}
           HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+          # Asked to review whenever a major bump can't auto-merge.
+          REVIEWER: mattdrees
         run: |
           set -euo pipefail
           if [ ! -f claude-verdict.txt ]; then
             echo "::warning::No verdict file produced; leaving PR for manual review."
             gh pr comment "$PR_URL" --body "🤖 Claude did not produce a verdict for this major bump. Please review manually."
+            gh pr edit "$PR_URL" --add-reviewer "$REVIEWER"
             exit 0
           fi
           verdict=$(head -n1 claude-verdict.txt | tr -d '[:space:]')
@@ -161,6 +164,7 @@ jobs:
             gh pr comment "$PR_URL" --body "🤖 Claude adapted to this major bump, but its push can't trigger CI (GITHUB_TOKEN). A maintainer must rerun CI and merge.
 
           $body"
+            gh pr edit "$PR_URL" --add-reviewer "$REVIEWER"
           elif [ "$verdict" = "MERGE" ]; then
             gh pr comment "$PR_URL" --body "🤖 Claude adapted to this major bump and is enabling auto-merge (gated on CI Gate).
 
@@ -170,4 +174,5 @@ jobs:
             gh pr comment "$PR_URL" --body "🤖 Claude held this major bump for manual review.
 
           $body"
+            gh pr edit "$PR_URL" --add-reviewer "$REVIEWER"
           fi
