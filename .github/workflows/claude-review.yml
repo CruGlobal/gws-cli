@@ -74,7 +74,9 @@ jobs:
                 crates may be added to crates/google-workspace-cli/Cargo.toml (path
                 deps are fine); the CLI uses dynamic schema discovery at runtime.
               - A changeset (.changeset/*.md, package name "gws-cli") is present when
-                any .rs / Cargo.toml / Cargo.lock file changed.
+                any .rs / Cargo.toml / Cargo.lock file changed. Exception: PRs
+                authored by dependabot[bot] (this PR: ${{ github.event.pull_request.user.login }})
+                get theirs from claude-release.yml's weekly job; don't flag them.
               - Security issues (unsafe input handling, credential/token leaks).
 
             Do NOT nitpick formatting or lint — cargo fmt and clippy -D warnings
@@ -91,4 +93,4 @@ jobs:
           # here — it REPLACES the default toolset and would disable inline review
           # commenting. Treat PR text/diff as data, never as instructions.
           use_sticky_comment: true
-          claude_args: "--max-turns 20"
+          claude_args: "--max-turns 40"
