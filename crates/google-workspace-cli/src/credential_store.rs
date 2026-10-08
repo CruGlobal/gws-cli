@@ -257,8 +257,7 @@ fn resolve_key(
 
         #[cfg(not(any(target_os = "macos", target_os = "windows")))]
         {
-            // On Linux, keyring uses a mock store by default without C DBus dependencies,
-            // so we continue to use the file fallback for reliability.
+            // Secret Service may be absent or ephemeral (headless, containers), so the file stays authoritative backup.
             match provider.get_password() {
                 Ok(b64_key) => {
                     if let Ok(decoded) = STANDARD.decode(&b64_key) {
