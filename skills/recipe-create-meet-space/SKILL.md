@@ -2,7 +2,7 @@
 name: recipe-create-meet-space
 description: "Create a Google Meet meeting space and share the join link."
 metadata:
-  version: 0.24.5
+  version: 0.24.6
   openclaw:
     category: "recipe"
     domain: "scheduling"
