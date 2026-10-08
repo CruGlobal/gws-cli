@@ -190,7 +190,10 @@ jobs:
     runs-on: ubuntu-latest
     permissions:
       contents: read
-      issues: write # RELEASE_TOKEN has no Issues scope; issues use GITHUB_TOKEN
+      # Issues, labels, and pings use GITHUB_TOKEN: RELEASE_TOKEN lacks Issues scope, and
+      # its PRs are authored by the PAT owner, who can't be review-requested or self-pinged.
+      issues: write
+      pull-requests: write
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v4
         with:
@@ -205,7 +208,7 @@ jobs:
       - name: Open PR or issue
         env:
           GH_TOKEN: ${{ secrets.RELEASE_TOKEN }}
-          ISSUE_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          BOT_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           JOB: ${{ needs.find.outputs.job }}
           SLUG: ${{ needs.find.outputs.slug }}
           RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ needs.find.outputs.run_id }}
@@ -223,7 +226,7 @@ jobs:
           fi
 
           if [ "$verdict" = GIVEUP ] || [ -z "$files" ]; then
-            GH_TOKEN="$ISSUE_TOKEN" gh issue create --title "Dependabot update failing: $JOB" --assignee "$REVIEWER" --body "Dependabot run $RUN_URL failed and Claude could not fix it.
+            GH_TOKEN="$BOT_TOKEN" gh issue create --title "Dependabot update failing: $JOB" --assignee "$REVIEWER" --body "Dependabot run $RUN_URL failed and Claude could not fix it.
 
           $rationale"
             exit 0
@@ -244,5 +247,9 @@ jobs:
           if [ "$verdict" = MERGE ]; then
             gh pr merge "$url" --auto --squash --delete-branch
           else
-            gh pr edit "$url" --add-reviewer "$REVIEWER"
+            export GH_TOKEN="$BOT_TOKEN"
+            gh label create needs-human-review --color FBCA04 \
+              --description "Automated change held for manual review" 2>/dev/null || true
+            gh pr edit "$url" --add-label needs-human-review
+            gh pr comment "$url" --body "@$REVIEWER Claude held this fix for your review."
           fi
