@@ -48,6 +48,6 @@
   ],
   "devDependencies": {
     "@changesets/cli": "^3.0.3",
-    "lefthook": "^2.1.16"
+    "lefthook": "^2.1.17"
   }
 }
