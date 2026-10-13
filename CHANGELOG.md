@@ -1,5 +1,25 @@
 # @googleworkspace/cli
 
+## 0.24.6
+
+### Patch Changes
+
+- 4844b97: Bump base64 to 0.23
+- aaaefca: Update keyring to 4.2.0
+- 6e31677: Bump mail-builder to 1.0
+- d86b00f: Bump rand to 0.10 and adapt to its API
+- 693d974: Dependency updates:
+  
+  - bump tokio from 1.53.1 to 1.53.2 in the cargo-minor-patch group (#74)
+  - bump aes-gcm from 0.10.3 to 0.11.1 (#70)
+  - bump dirs from 5.0.1 to 7.0.0 (#57)
+  - bump serial_test from 3.5.0 to 4.0.1 (#55)
+  - bump sha2 from 0.10.9 to 0.11.0 (#52)
+  - bump toml from 0.8.23 to 1.1.6+spec-1.1.0 (#51)
+  - bump uuid from 1.26.1 to 1.27.0 in the cargo-minor-patch group across 1 directory (#50)
+- 0e4408d: Fix test env var leaks that made config_dir and keyring-backend tests order-dependent.
+- d40bf85: Sync generated skills with latest Google Discovery API specs
+
 ## 0.24.5
 
 ### Patch Changes
