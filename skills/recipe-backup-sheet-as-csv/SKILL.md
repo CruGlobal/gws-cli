@@ -2,7 +2,7 @@
 name: recipe-backup-sheet-as-csv
 description: "Export a Google Sheets spreadsheet as a CSV file for local backup or processing."
 metadata:
-  version: 0.24.6
+  version: 0.24.7
   openclaw:
     category: "recipe"
     domain: "productivity"
