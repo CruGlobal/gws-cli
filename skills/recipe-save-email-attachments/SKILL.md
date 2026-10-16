@@ -2,7 +2,7 @@
 name: recipe-save-email-attachments
 description: "Find Gmail messages with attachments and save them to a Google Drive folder."
 metadata:
-  version: 0.24.6
+  version: 0.24.7
   openclaw:
     category: "recipe"
     domain: "productivity"

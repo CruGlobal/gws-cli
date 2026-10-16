@@ -2,7 +2,7 @@
 name: gws-workflow
 description: "Google Workflow: Cross-service productivity workflows."
 metadata:
-  version: 0.24.6
+  version: 0.24.7
   openclaw:
     category: "productivity"
     requires:
