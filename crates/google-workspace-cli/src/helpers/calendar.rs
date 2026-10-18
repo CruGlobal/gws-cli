@@ -265,33 +265,35 @@ async fn handle_agenda(matches: &ArgMatches) -> Result<(), GwsError> {
 
     // 1. List all calendars
     let list_url = "https://www.googleapis.com/calendar/v3/users/me/calendarList";
-    let list_resp = client
-        .get(list_url)
-        .maybe_bearer_auth(&token)
-        .send()
-        .await
-        .map_err(|e| GwsError::Other(anyhow::anyhow!("Failed to list calendars: {e}")))?;
+    let calendars =
+        fetch_all_items(|page_token| {
+            let client = &client;
+            let token = &token;
+            async move {
+                let mut req = client.get(list_url).maybe_bearer_auth(token);
+                if let Some(page_token) = &page_token {
+                    req = req.query(&[("pageToken", page_token)]);
+                }
+                let list_resp = req.send().await.map_err(|e| {
+                    GwsError::Other(anyhow::anyhow!("Failed to list calendars: {e}"))
+                })?;
 
-    if !list_resp.status().is_success() {
-        let err = list_resp.text().await.unwrap_or_default();
-        return Err(GwsError::Api {
-            code: 0,
-            message: err,
-            reason: "calendarList_failed".to_string(),
-            enable_url: None,
-        });
-    }
+                if !list_resp.status().is_success() {
+                    let err = list_resp.text().await.unwrap_or_default();
+                    return Err(GwsError::Api {
+                        code: 0,
+                        message: err,
+                        reason: "calendarList_failed".to_string(),
+                        enable_url: None,
+                    });
+                }
 
-    let list_json: Value = list_resp
-        .json()
-        .await
-        .map_err(|e| GwsError::Other(anyhow::anyhow!("Failed to parse calendar list: {e}")))?;
-
-    let calendars = list_json
-        .get("items")
-        .and_then(|i| i.as_array())
-        .cloned()
-        .unwrap_or_default();
+                list_resp.json::<Value>().await.map_err(|e| {
+                    GwsError::Other(anyhow::anyhow!("Failed to parse calendar list: {e}"))
+                })
+            }
+        })
+        .await?;
 
     // 2. For each calendar, fetch events concurrently
     use futures_util::stream::{self, StreamExt};
@@ -324,7 +326,7 @@ async fn handle_agenda(matches: &ArgMatches) -> Result<(), GwsError> {
         })
         .collect();
 
-    let mut all_events: Vec<Value> = stream::iter(filtered_calendars)
+    let fetched: Vec<Result<Vec<Value>, String>> = stream::iter(filtered_calendars)
         .map(|cal| {
             let client = &client;
             let token = &token;
@@ -336,72 +338,77 @@ async fn handle_agenda(matches: &ArgMatches) -> Result<(), GwsError> {
                     crate::validate::encode_path_segment(&cal.id),
                 );
 
-                let resp = crate::client::send_with_retry(|| {
-                    client
-                        .get(&events_url)
-                        .query(&[
-                            ("timeMin", time_min.as_str()),
-                            ("timeMax", time_max.as_str()),
-                            ("singleEvents", "true"),
-                            ("orderBy", "startTime"),
-                            ("maxResults", "50"),
-                        ])
-                        .maybe_bearer_auth(token)
+                let items = fetch_all_items(|page_token| {
+                    let events_url = &events_url;
+                    async move {
+                        let resp = crate::client::send_with_retry(|| {
+                            let mut req = client
+                                .get(events_url)
+                                .query(&[
+                                    ("timeMin", time_min.as_str()),
+                                    ("timeMax", time_max.as_str()),
+                                    ("singleEvents", "true"),
+                                    ("orderBy", "startTime"),
+                                    ("maxResults", "2500"),
+                                ])
+                                .maybe_bearer_auth(token);
+                            if let Some(page_token) = &page_token {
+                                req = req.query(&[("pageToken", page_token)]);
+                            }
+                            req
+                        })
+                        .await
+                        .map_err(|e| e.to_string())?;
+
+                        if !resp.status().is_success() {
+                            return Err(format!("HTTP {}", resp.status().as_u16()));
+                        }
+                        resp.json::<Value>().await.map_err(|e| e.to_string())
+                    }
                 })
-                .await;
-
-                let resp = match resp {
-                    Ok(r) if r.status().is_success() => r,
-                    _ => return vec![],
-                };
-
-                let events_json: Value = match resp.json().await {
-                    Ok(v) => v,
-                    Err(_) => return vec![],
-                };
+                .await
+                .map_err(|e| format!("{} ({e})", cal.summary))?;
 
                 let mut events = Vec::new();
-                if let Some(items) = events_json.get("items").and_then(|i| i.as_array()) {
-                    for event in items {
-                        let start = event
-                            .get("start")
-                            .and_then(|s| s.get("dateTime").or_else(|| s.get("date")))
-                            .and_then(|v| v.as_str())
-                            .unwrap_or("")
-                            .to_string();
-                        let end = event
-                            .get("end")
-                            .and_then(|s| s.get("dateTime").or_else(|| s.get("date")))
-                            .and_then(|v| v.as_str())
-                            .unwrap_or("")
-                            .to_string();
-                        let summary = event
-                            .get("summary")
-                            .and_then(|v| v.as_str())
-                            .unwrap_or("(No title)")
-                            .to_string();
-                        let location = event
-                            .get("location")
-                            .and_then(|v| v.as_str())
-                            .unwrap_or("")
-                            .to_string();
+                for event in &items {
+                    let start = event
+                        .get("start")
+                        .and_then(|s| s.get("dateTime").or_else(|| s.get("date")))
+                        .and_then(|v| v.as_str())
+                        .unwrap_or("")
+                        .to_string();
+                    let end = event
+                        .get("end")
+                        .and_then(|s| s.get("dateTime").or_else(|| s.get("date")))
+                        .and_then(|v| v.as_str())
+                        .unwrap_or("")
+                        .to_string();
+                    let summary = event
+                        .get("summary")
+                        .and_then(|v| v.as_str())
+                        .unwrap_or("(No title)")
+                        .to_string();
+                    let location = event
+                        .get("location")
+                        .and_then(|v| v.as_str())
+                        .unwrap_or("")
+                        .to_string();
 
-                        events.push(json!({
-                            "start": start,
-                            "end": end,
-                            "summary": summary,
-                            "calendar": cal.summary,
-                            "location": location,
-                        }));
-                    }
+                    events.push(json!({
+                        "start": start,
+                        "end": end,
+                        "summary": summary,
+                        "calendar": cal.summary,
+                        "location": location,
+                    }));
                 }
-                events
+                Ok(events)
             }
         })
         .buffer_unordered(5)
-        .flat_map(stream::iter)
         .collect()
         .await;
+    let mut all_events = merge_calendar_events(fetched)?;
 
     // 3. Sort by start time
     all_events.sort_by(|a, b| {
@@ -422,6 +429,48 @@ async fn handle_agenda(matches: &ArgMatches) -> Result<(), GwsError> {
         crate::formatter::format_value(&output, &output_format)
     );
     Ok(())
+}
+
+/// Follows `nextPageToken` until it is absent and returns every page's `items`
+async fn fetch_all_items<F, Fut, E>(mut fetch_page: F) -> Result<Vec<Value>, E>
+where
+    F: FnMut(Option<String>) -> Fut,
+    Fut: Future<Output = Result<Value, E>>,
+{
+    let mut items = Vec::new();
+    let mut page_token = None;
+    loop {
+        let page = fetch_page(page_token).await?;
+        if let Some(page_items) = page.get("items").and_then(|i| i.as_array()) {
+            items.extend(page_items.iter().cloned());
+        }
+        match page.get("nextPageToken").and_then(|t| t.as_str()) {
+            Some(next) => page_token = Some(next.to_string()),
+            None => return Ok(items),
+        }
+    }
+}
+
+/// Fails if any calendar could not be read, so a missing calendar never looks like free time
+fn merge_calendar_events(fetched: Vec<Result<Vec<Value>, String>>) -> Result<Vec<Value>, GwsError> {
+    let mut events = Vec::new();
+    let mut failed = Vec::new();
+    for result in fetched {
+        match result {
+            Ok(cal_events) => events.extend(cal_events),
+            Err(cal) => failed.push(cal),
+        }
+    }
+    if !failed.is_empty() {
+        failed.sort();
+        return Err(GwsError::Api {
+            code: 0,
+            message: format!("Failed to read events from: {}", failed.join(", ")),
+            reason: "events_failed".to_string(),
+            enable_url: None,
+        });
+    }
+    Ok(events)
 }
 
 fn build_insert_request(
@@ -741,6 +790,64 @@ mod tests {
         assert!(body.contains("Discuss stuff"));
         assert!(body.contains("a@b.com"));
         assert!(body.contains("c@d.com"));
+    }
+
+    #[tokio::test]
+    async fn fetch_all_items_follows_next_page_token() {
+        let mut seen = Vec::new();
+        let items = fetch_all_items(|page_token| {
+            seen.push(page_token.clone());
+            async move {
+                Ok::<_, String>(match page_token.as_deref() {
+                    None => json!({"items": [1], "nextPageToken": "p2"}),
+                    Some("p2") => json!({"items": [2], "nextPageToken": "p3"}),
+                    Some("p3") => json!({"items": [3]}),
+                    Some(other) => panic!("unexpected token {other}"),
+                })
+            }
+        })
+        .await
+        .unwrap();
+
+        assert_eq!(items, vec![json!(1), json!(2), json!(3)]);
+        assert_eq!(seen, vec![None, Some("p2".into()), Some("p3".into())]);
+    }
+
+    #[tokio::test]
+    async fn fetch_all_items_fails_when_a_later_page_fails() {
+        let result = fetch_all_items(|page_token| async move {
+            match page_token {
+                None => Ok(json!({"items": [1], "nextPageToken": "p2"})),
+                Some(_) => Err("HTTP 500".to_string()),
+            }
+        })
+        .await;
+
+        assert_eq!(result, Err("HTTP 500".to_string()));
+    }
+
+    #[test]
+    fn merge_calendar_events_fails_naming_unreadable_calendars() {
+        let err = merge_calendar_events(vec![
+            Ok(vec![json!({"summary": "a"})]),
+            Err("Work (HTTP 403)".to_string()),
+            Err("Holidays (HTTP 404)".to_string()),
+        ])
+        .unwrap_err();
+
+        let msg = err.to_string();
+        assert!(
+            msg.contains("Holidays (HTTP 404), Work (HTTP 403)"),
+            "{msg}"
+        );
+    }
+
+    #[test]
+    fn merge_calendar_events_merges_all_calendars() {
+        let events =
+            merge_calendar_events(vec![Ok(vec![json!(1)]), Ok(vec![json!(2), json!(3)])]).unwrap();
+
+        assert_eq!(events, vec![json!(1), json!(2), json!(3)]);
     }
 
     /// Verify that agenda day boundaries use a specific timezone, not UTC.
