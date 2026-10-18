@@ -431,7 +431,6 @@ async fn handle_agenda(matches: &ArgMatches) -> Result<(), GwsError> {
     Ok(())
 }
 
-/// Follows `nextPageToken` until it is absent and returns every page's `items`
 async fn fetch_all_items<F, Fut, E>(mut fetch_page: F) -> Result<Vec<Value>, E>
 where
     F: FnMut(Option<String>) -> Fut,
@@ -451,7 +450,7 @@ where
     }
 }
 
-/// Fails if any calendar could not be read, so a missing calendar never looks like free time
+/// A calendar that could not be read must never look like free time
 fn merge_calendar_events(fetched: Vec<Result<Vec<Value>, String>>) -> Result<Vec<Value>, GwsError> {
     let mut events = Vec::new();
     let mut failed = Vec::new();
