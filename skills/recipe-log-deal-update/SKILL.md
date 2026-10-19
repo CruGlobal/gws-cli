@@ -2,7 +2,7 @@
 name: recipe-log-deal-update
 description: "Append a deal status update to a Google Sheets sales tracking spreadsheet."
 metadata:
-  version: 0.24.6
+  version: 0.24.7
   openclaw:
     category: "recipe"
     domain: "sales"

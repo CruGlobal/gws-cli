@@ -2,7 +2,7 @@
 name: persona-it-admin
 description: "Administer IT — monitor security and configure Workspace."
 metadata:
-  version: 0.24.6
+  version: 0.24.7
   openclaw:
     category: "persona"
     requires:

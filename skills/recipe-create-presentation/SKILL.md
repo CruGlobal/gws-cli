@@ -2,7 +2,7 @@
 name: recipe-create-presentation
 description: "Create a new Google Slides presentation and add initial slides."
 metadata:
-  version: 0.24.6
+  version: 0.24.7
   openclaw:
     category: "recipe"
     domain: "productivity"

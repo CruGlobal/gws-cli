@@ -2,7 +2,7 @@
 name: recipe-find-large-files
 description: "Identify large Google Drive files consuming storage quota."
 metadata:
-  version: 0.24.6
+  version: 0.24.7
   openclaw:
     category: "recipe"
     domain: "productivity"

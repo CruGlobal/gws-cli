@@ -2,7 +2,7 @@
 name: recipe-save-email-to-doc
 description: "Save a Gmail message body into a Google Doc for archival or reference."
 metadata:
-  version: 0.24.6
+  version: 0.24.7
   openclaw:
     category: "recipe"
     domain: "productivity"
