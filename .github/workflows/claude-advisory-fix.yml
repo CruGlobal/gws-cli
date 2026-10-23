@@ -12,10 +12,8 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-# Claude fixes new RustSec advisories against main. The advisory DB changes
-# daily, so main's Cargo Deny can go red with no commit. A daily cron runs
-# `cargo deny check advisories` and, if it fails, has Claude bump the affected
-# crates (or, when no fix exists, ignore the advisory in deny.toml) and open a PR.
+# New RustSec advisories turn main's Cargo Deny red with no commit. Daily, if
+# advisories fail, Claude bumps the crates (or ignores unfixable ones) and opens a PR.
 #
 # SECURITY: same trade-off as claude-dependabot-failures.yml. Claude compiles
 # updated crates (untrusted build scripts) in a job holding
