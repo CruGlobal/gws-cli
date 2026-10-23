@@ -172,9 +172,8 @@ jobs:
         with:
           command: check bans licenses sources
 
-      # The advisory DB changes daily, so a new advisory would fail every open PR
-      # regardless of its diff. PRs only gate on it when they change dependencies;
-      # main still checks it, and claude-advisory-fix.yml heals it daily.
+      # New advisories would fail every PR regardless of diff, so PRs gate only on dep changes.
+      # main always checks; claude-advisory-fix.yml heals it.
       - name: Cargo deny (advisories)
         if: needs.changes.outputs.deps == 'true' || github.event_name == 'push'
         uses: EmbarkStudios/cargo-deny-action@3c6349835b2b7b196a839186cb8b78e02f7b5f25 # v2.1.1
