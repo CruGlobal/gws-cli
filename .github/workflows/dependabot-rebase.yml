@@ -12,14 +12,10 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-# Dependabot only rebases a PR on merge conflicts, so a PR that failed CI Gate
-# for a reason since fixed on main (e.g. an advisory cleared by a lockfile bump)
-# stays red forever. When main changes in a way that could fix CI, ask Dependabot
-# to rebase each open PR that failed CI Gate and is behind main. A rerun alone
-# wouldn't help: it re-tests the old merge commit.
+# Dependabot only rebases on conflicts, so a PR whose CI Gate failure was since
+# fixed on main stays red. When main changes, ask it to rebase failing, behind PRs.
 #
-# The comment uses RELEASE_TOKEN: Dependabot ignores commands from bots, and its
-# rebase push (unlike a GITHUB_TOKEN push) triggers CI. This job runs no PR code.
+# RELEASE_TOKEN: Dependabot ignores bot commands. This job runs no PR code.
 name: Dependabot rebase
 
 on:
