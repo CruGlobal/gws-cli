@@ -37,6 +37,7 @@ jobs:
       rust: ${{ steps.filter.outputs.rust }}
       nix: ${{ steps.filter.outputs.nix }}
       skills: ${{ steps.filter.outputs.skills }}
+      deps: ${{ steps.filter.outputs.deps }}
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v4
       - uses: dorny/paths-filter@ceb8a2b8f2d89434be7ff52d3de7ec3738c5cc9d # v3
@@ -56,6 +57,11 @@ jobs:
               - 'flake.lock'
             skills:
               - 'skills/**'
+            deps:
+              - 'Cargo.toml'
+              - 'crates/*/Cargo.toml'
+              - 'Cargo.lock'
+              - 'deny.toml'
 
   test:
     name: Test
@@ -156,15 +162,24 @@ jobs:
   deny:
     name: Cargo Deny
     needs: changes
-    if: needs.changes.outputs.rust == 'true' || github.event_name == 'push'
+    if: needs.changes.outputs.rust == 'true' || needs.changes.outputs.deps == 'true' || github.event_name == 'push'
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v4
 
-      - name: Cargo deny
+      - name: Cargo deny (bans, licenses, sources)
         uses: EmbarkStudios/cargo-deny-action@3c6349835b2b7b196a839186cb8b78e02f7b5f25 # v2.1.1
         with:
-          command: check
+          command: check bans licenses sources
+
+      # The advisory DB changes daily, so a new advisory would fail every open PR
+      # regardless of its diff. PRs only gate on it when they change dependencies;
+      # main still checks it, and claude-advisory-fix.yml heals it daily.
+      - name: Cargo deny (advisories)
+        if: needs.changes.outputs.deps == 'true' || github.event_name == 'push'
+        uses: EmbarkStudios/cargo-deny-action@3c6349835b2b7b196a839186cb8b78e02f7b5f25 # v2.1.1
+        with:
+          command: check advisories
 
 
   skills:
