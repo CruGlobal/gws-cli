@@ -14,7 +14,13 @@ targets = [
 
 # Advisories — checks for known vulnerable crate versions
 [advisories]
-ignore = []
+ignore = [
+    # zbus 6 absorbed these crates; our only path is keyring -> secret-service -> zbus 5.
+    # Drop once secret-service moves to zbus 6.
+    { id = "RUSTSEC-2026-0370", reason = "zvariant merged into zbus 6; waiting on secret-service" },
+    { id = "RUSTSEC-2026-0371", reason = "zbus_names merged into zbus 6; waiting on secret-service" },
+    { id = "RUSTSEC-2026-0372", reason = "zvariant_derive merged into zbus 6; waiting on secret-service" },
+]
 db-urls = ["https://github.com/rustsec/advisory-db"]
 
 # Licenses — allowlist of acceptable licenses
