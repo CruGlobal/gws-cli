@@ -2,7 +2,7 @@
 name: recipe-compare-sheet-tabs
 description: "Read data from two tabs in a Google Sheet to compare and identify differences."
 metadata:
-  version: 0.24.7
+  version: 0.24.8
   openclaw:
     category: "recipe"
     domain: "productivity"

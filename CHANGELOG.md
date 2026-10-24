@@ -1,5 +1,12 @@
 # @googleworkspace/cli
 
+## 0.24.8
+
+### Patch Changes
+
+- 3d3d3a1: Bump transitive dev dependency launch-editor to 2.14.2 (security fix)
+- 942740d: Bump rustls-webpki to 0.103.16 and ctutils to 0.4.5 for RUSTSEC-2026-0382 and RUSTSEC-2026-0385
+
 ## 0.24.7
 
 ### Patch Changes
