@@ -35,7 +35,7 @@ jobs:
       contents: write
       pull-requests: write
     steps:
-      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v4
         with:
           token: ${{ secrets.RELEASE_TOKEN || github.token }}
 
@@ -43,7 +43,7 @@ jobs:
         uses: dtolnay/rust-toolchain@631a55b12751854ce901bb631d5902ceb48146f7 # stable
 
       - name: Install Nix
-        uses: cachix/install-nix-action@08dcb3a5e62fa31e2da3d490afc4176ef55ecd72 # v30
+        uses: cachix/install-nix-action@75c75c31ebece974e48ebc36b4ad125bd97bd97b # v31.11.3
         with:
           github_access_token: ${{ secrets.RELEASE_TOKEN || github.token }}
 
@@ -64,12 +64,16 @@ jobs:
 
       - name: Create Release Pull Request or Tag
         id: changesets
-        uses: changesets/action@6a0a831ff30acef54f2c6aa1cbbc1096b066edaf # v1
+        uses: changesets/action@ae32849d5ba541f9ae29e40e22a623bc13562f51 # v2.1.2
         with:
-          version: pnpm run version-sync
-          publish: pnpm run tag-release
-          commit: 'chore: release versions'
-          title: 'chore: release versions'
-          setupGitUser: false
-        env:
-          GITHUB_TOKEN: ${{ secrets.RELEASE_TOKEN || github.token }}
+          version-script: pnpm run version-sync
+          publish-script: pnpm run tag-release
+          commit-message: 'chore: release versions'
+          pr-title: 'chore: release versions'
+          # v2 pushes via the GitHub API by default; keep git CLI (version-sync stages files).
+          push-with-git-cli: true
+          # tag-release.sh pushes the tag; release.yml creates the GitHub release.
+          create-github-releases: false
+          push-git-tags: false
+          # v2 ignores the GITHUB_TOKEN env var; pass the token explicitly.
+          github-token: ${{ secrets.RELEASE_TOKEN || github.token }}

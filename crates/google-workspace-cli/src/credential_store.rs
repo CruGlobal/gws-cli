@@ -16,11 +16,11 @@ use std::path::PathBuf;
 
 use crate::output::sanitize_for_terminal;
 
-use aes_gcm::aead::{Aead, KeyInit, OsRng};
-use aes_gcm::{AeadCore, Aes256Gcm, Nonce};
+use aes_gcm::aead::{Aead, Generate, KeyInit};
+use aes_gcm::{Aes256Gcm, Nonce};
 
 use keyring::Entry;
-use rand::RngCore;
+use rand::Rng;
 use std::sync::OnceLock;
 use zeroize::Zeroize;
 
@@ -108,7 +108,7 @@ fn read_key_file(path: &std::path::Path) -> Option<[u8; 32]> {
 /// Generate a random 256-bit key.
 fn generate_random_key() -> [u8; 32] {
     let mut key = [0u8; 32];
-    rand::thread_rng().fill_bytes(&mut key);
+    rand::rng().fill_bytes(&mut key);
     key
 }
 
@@ -257,8 +257,7 @@ fn resolve_key(
 
         #[cfg(not(any(target_os = "macos", target_os = "windows")))]
         {
-            // On Linux, keyring uses a mock store by default without C DBus dependencies,
-            // so we continue to use the file fallback for reliability.
+            // Secret Service may be absent or ephemeral (headless, containers), so the file stays authoritative backup.
             match provider.get_password() {
                 Ok(b64_key) => {
                     if let Ok(decoded) = STANDARD.decode(&b64_key) {
@@ -385,7 +384,7 @@ pub fn encrypt(plaintext: &[u8]) -> anyhow::Result<Vec<u8>> {
     let cipher = Aes256Gcm::new_from_slice(&key)
         .map_err(|e| anyhow::anyhow!("Failed to create cipher: {e}"))?;
 
-    let nonce = Aes256Gcm::generate_nonce(&mut OsRng);
+    let nonce = Nonce::generate();
     let ciphertext = cipher
         .encrypt(&nonce, plaintext)
         .map_err(|e| anyhow::anyhow!("Encryption failed: {e}"))?;
@@ -406,8 +405,8 @@ pub fn decrypt(data: &[u8]) -> anyhow::Result<Vec<u8>> {
     let cipher = Aes256Gcm::new_from_slice(&key)
         .map_err(|e| anyhow::anyhow!("Failed to create cipher: {e}"))?;
 
-    let nonce = Nonce::from_slice(&data[..12]);
-    let plaintext = cipher.decrypt(nonce, &data[12..]).map_err(|_| {
+    let nonce = Nonce::try_from(&data[..12]).expect("length checked above");
+    let plaintext = cipher.decrypt(&nonce, &data[12..]).map_err(|_| {
         anyhow::anyhow!(
             "Decryption failed. Credentials may have been created on a different machine. \
                  Run `gws auth logout` and `gws auth login` to re-authenticate."
@@ -813,9 +812,17 @@ mod tests {
     // ---- KeyringBackend::from_env tests ----
 
     #[test]
+    #[serial_test::serial]
     fn backend_default_is_keyring() {
         // from_env reads the env; default (empty/unset) → Keyring
-        assert_eq!(KeyringBackend::from_env(), KeyringBackend::Keyring);
+        const VAR: &str = "GOOGLE_WORKSPACE_CLI_KEYRING_BACKEND";
+        let saved = std::env::var_os(VAR);
+        std::env::remove_var(VAR);
+        let backend = KeyringBackend::from_env();
+        if let Some(v) = saved {
+            std::env::set_var(VAR, v);
+        }
+        assert_eq!(backend, KeyringBackend::Keyring);
     }
 
     // ---- read_key_file tests ----

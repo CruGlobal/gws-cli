@@ -14,7 +14,7 @@
 
 [package]
 name = "google-workspace-cli"
-version = "0.24.3"
+version = "0.24.8"
 edition = "2021"
 description = "Google Workspace CLI — dynamic command surface from Discovery Service"
 license = "Apache-2.0"
@@ -30,35 +30,36 @@ name = "gws"
 path = "src/main.rs"
 
 [dependencies]
-google-workspace = { version = "0.24.3", path = "../google-workspace" }
+google-workspace = { version = "0.24.8", path = "../google-workspace" }
 tempfile = "3"
-aes-gcm = "0.10"
+aes-gcm = "0.11"
 anyhow = "1"
 clap = { version = "4", features = ["derive", "string"] }
-dirs = "5"
+dirs = "7"
 dotenvy = "0.15"
 hostname = "0.4"
+keyring = "4.2.0"
 reqwest = { version = "0.12", features = ["json", "stream", "rustls-tls-native-roots", "socks"], default-features = false }
-rand = "0.8"
+rand = "0.10"
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
-sha2 = "0.10"
+sha2 = "0.11"
 thiserror = "2"
 tokio = { version = "1", features = ["full"] }
 yup-oauth2 = "12"
 futures-util = "0.3"
 tokio-util = { version = "0.7", features = ["io"] }
 bytes = "1"
-base64 = "0.22.1"
+base64 = "0.23.1"
 derive_builder = "0.20.2"
 ratatui = "0.30.0"
 crossterm = "0.29.0"
 chrono = "0.4.44"
 chrono-tz = "0.10"
 iana-time-zone = "0.1"
-mail-builder = "0.4"
+mail-builder = "1.0"
 async-trait = "0.1.89"
-toml = "0.8"
+toml = "1.1"
 percent-encoding = "2.3.2"
 zeroize = { version = "1.8.2", features = ["derive"] }
 tracing = "0.1"
@@ -67,14 +68,5 @@ tracing-appender = "0.2"
 uuid = { version = "1.22.0", features = ["v4", "v5"] }
 mime_guess2 = "2.3.1"
 
-[target.'cfg(target_os = "macos")'.dependencies]
-keyring = { version = "3.6.3", features = ["apple-native"] }
-
-[target.'cfg(target_os = "windows")'.dependencies]
-keyring = { version = "3.6.3", features = ["windows-native"] }
-
-[target.'cfg(not(any(target_os = "macos", target_os = "windows")))'.dependencies]
-keyring = "3.6.3"
-
 [dev-dependencies]
-serial_test = "3.4.0"
+serial_test = "4.0.1"

@@ -29,7 +29,7 @@ jobs:
     name: Policy Check
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v4
         with:
           fetch-depth: 0
       - name: Enforce AGENTS.md rules
@@ -42,7 +42,8 @@ jobs:
           fi
           echo "Policy check passed."
       - name: Enforce Changeset File
-        if: github.event_name == 'pull_request'
+        # Dependabot PRs get their changeset from claude-release.yml's weekly job.
+        if: github.event_name == 'pull_request' && github.event.pull_request.user.login != 'dependabot[bot]'
         run: |
           git fetch origin ${{ github.base_ref }}
           # Skip changeset requirement if no Rust/Cargo files changed

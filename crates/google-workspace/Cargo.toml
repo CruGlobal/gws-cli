@@ -14,7 +14,7 @@
 
 [package]
 name = "google-workspace"
-version = "0.24.3"
+version = "0.24.8"
 edition = "2021"
 description = "Google Workspace API client — Discovery Document types, service registry, and HTTP utilities"
 license = "Apache-2.0"
@@ -36,5 +36,5 @@ tokio = { version = "1", features = ["time", "fs"] }
 tracing = "0.1"
 
 [dev-dependencies]
-serial_test = "3.4.0"
+serial_test = "4.0.1"
 tempfile = "3"

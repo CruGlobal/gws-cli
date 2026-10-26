@@ -46,7 +46,7 @@ pub fn atomic_write(path: &Path, data: &[u8]) -> io::Result<()> {
 /// This implementation uses `create_new(true)` (O_EXCL) and `mode(0o600)` to
 /// prevent TOCTOU/symlink race conditions.
 pub async fn atomic_write_async(path: &Path, data: &[u8]) -> io::Result<()> {
-    use rand::Rng;
+    use rand::RngExt;
     use tokio::io::AsyncWriteExt;
 
     let parent = path.parent().ok_or_else(|| {
@@ -62,8 +62,8 @@ pub async fn atomic_write_async(path: &Path, data: &[u8]) -> io::Result<()> {
     let mut tmp_path;
 
     loop {
-        let suffix: String = rand::thread_rng()
-            .sample_iter(&rand::distributions::Alphanumeric)
+        let suffix: String = rand::rng()
+            .sample_iter(&rand::distr::Alphanumeric)
             .take(8)
             .map(char::from)
             .collect();
