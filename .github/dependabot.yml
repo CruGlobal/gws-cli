@@ -13,15 +13,16 @@ updates:
           - minor
           - patch
 
+  # All Actions bumps (majors and SHA digests too) in one weekly PR: separate
+  # workflow-editing PRs knock each other's auto-merge off as they merge.
   - package-ecosystem: github-actions
     directory: "/"
     schedule:
       interval: weekly
     groups:
       actions:
-        update-types:
-          - minor
-          - patch
+        patterns:
+          - "*"
 
   # Root tooling manifest (changesets, lefthook).
   # Daily so transitive security fixes (cleared by in-range bumps of these
