@@ -1,5 +1,5 @@
 ---
-"gws-cli": major
+"gws-cli": minor
 ---
 
-Replace the Gemini CLI extension with an Antigravity CLI plugin.
+Add an Antigravity CLI plugin. The Gemini CLI extension still works and now reads `rules/gws.md`.

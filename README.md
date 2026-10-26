@@ -254,7 +254,7 @@ The `gws-shared` skill includes an `install` block so OpenClaw auto-installs the
 
 </details>
 
-## Antigravity CLI Plugin (formally "Gemini CLI")
+## Antigravity CLI Plugin (formerly "Gemini CLI")
 
 1. Authenticate the CLI first:
 
@@ -265,6 +265,11 @@ The `gws-shared` skill includes an `install` block so OpenClaw auto-installs the
 2. Install the plugin into Antigravity CLI:
    ```bash
    agy plugin install https://github.com/CruGlobal/gws-cli
+   ```
+
+   Still on Gemini CLI (enterprise license or paid API key)? The extension still works:
+   ```bash
+   gemini extensions install https://github.com/CruGlobal/gws-cli
    ```
 
 Installing this plugin gives your Antigravity CLI agent direct access to all `gws` commands and Google Workspace agent skills. Because `gws` handles its own authentication securely, you simply need to authenticate your terminal once prior to using the agent, and the plugin will automatically inherit your credentials.
