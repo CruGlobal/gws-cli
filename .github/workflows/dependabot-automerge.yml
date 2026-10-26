@@ -39,6 +39,7 @@ jobs:
           github-token: ${{ secrets.GITHUB_TOKEN }}
 
       # Below 1.0, semver treats a minor bump (0.10 -> 0.11) as breaking.
+      # In a group, previous-version is only the first dep's, so check every dep.
       # Actions pinned to a SHA that tracks a ref (`# v3`, `# main`) get digest
       # bumps with no update-type; same ref, so treat as non-breaking.
       - name: Enable auto-merge for non-breaking updates
@@ -46,7 +47,7 @@ jobs:
           PR_URL: ${{ github.event.pull_request.html_url }}
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           UPDATE_TYPE: ${{ steps.metadata.outputs.update-type }}
-          PREV: ${{ steps.metadata.outputs.previous-version }}
+          DEPS: ${{ steps.metadata.outputs.updated-dependencies-json }}
           ECOSYSTEM: ${{ steps.metadata.outputs.package-ecosystem }}
         run: |
           set -euo pipefail
@@ -56,8 +57,8 @@ jobs:
           case "$UPDATE_TYPE" in
             version-update:semver-patch|digest) ;;
             version-update:semver-minor)
-              if [[ "$PREV" == 0.* ]]; then
-                echo "0.x minor bump ($PREV) is breaking; leaving for Claude adapt."
+              if jq -e 'any(.[]; .updateType == "version-update:semver-minor" and ((.prevVersion // "") | startswith("0.")))' <<< "$DEPS" > /dev/null; then
+                echo "0.x minor bump is breaking; leaving for Claude adapt."
                 exit 0
               fi ;;
             *) echo "Not auto-merging $UPDATE_TYPE."; exit 0 ;;
