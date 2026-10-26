@@ -93,7 +93,7 @@ jobs:
           components: clippy
 
       - name: Install cargo-deny
-        uses: taiki-e/install-action@f7e5d7c961414b23f5b25b2da9294395d08513ad # cargo-llvm-cov
+        uses: taiki-e/install-action@1e29709c0ec63babbe8f266397a465f29a825f91 # cargo-llvm-cov
         with:
           tool: cargo-deny
 
@@ -106,7 +106,7 @@ jobs:
       # continue-on-error: a failed/timed-out run falls through to an issue.
       - name: Claude fix
         continue-on-error: true
-        uses: anthropics/claude-code-action@58985842b834ed26087302ba27d07bc24ca8697a # v1.0.244
+        uses: anthropics/claude-code-action@16f9f71ab9c490faf367f94dd294897edc25be33 # v1.0.261
         with:
           claude_code_oauth_token: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}
           prompt: |
@@ -162,7 +162,7 @@ jobs:
           git diff --cached --binary > "$RUNNER_TEMP/out/fix.patch"
           git diff --cached --stat
 
-      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: advisory-fix
           path: ${{ runner.temp }}/out/
