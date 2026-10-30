@@ -1,5 +1,16 @@
 # @googleworkspace/cli
 
+## 0.25.0
+
+### Minor Changes
+
+- eca484d: Add an Antigravity CLI plugin. The Gemini CLI extension still works and now reads `rules/gws.md`.
+
+### Patch Changes
+
+- 9352fb4: Helper commands (`+agenda`, `+triage`, `+watch`, workflows, etc.) now route through `GOOGLE_WORKSPACE_CLI_DISCOVERY_BASE_URL` like regular commands. With the override set, direct connections to `*.googleapis.com` are refused (OAuth and Model Armor regional endpoints excepted), and a warning is printed when it is set without `GOOGLE_WORKSPACE_CLI_AUTH=none`.
+- e170ed0: Sync generated skills with latest Google Discovery API specs
+
 ## 0.24.8
 
 ### Patch Changes

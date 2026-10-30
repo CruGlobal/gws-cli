@@ -2,7 +2,7 @@
 name: recipe-create-doc-from-template
 description: "Copy a Google Docs template, fill in content, and share with collaborators."
 metadata:
-  version: 0.24.8
+  version: 0.25.0
   openclaw:
     category: "recipe"
     domain: "productivity"
