@@ -56,6 +56,13 @@ async fn main() {
     // Initialize structured logging (no-op if env vars are unset)
     logging::init_logging();
 
+    if let Some(warning) = discovery::proxy_credentials_warning(
+        discovery::base_url_override().as_deref(),
+        auth::no_auth_mode(),
+    ) {
+        eprintln!("{warning}");
+    }
+
     if let Err(err) = run().await {
         print_error_json(&err);
         std::process::exit(err.exit_code());
