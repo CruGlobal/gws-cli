@@ -226,6 +226,16 @@ Typically paired with `GOOGLE_WORKSPACE_CLI_DISCOVERY_BASE_URL` (see
 [Environment Variables](#environment-variables)) so both discovery documents
 and API calls route through the proxy.
 
+With `GOOGLE_WORKSPACE_CLI_DISCOVERY_BASE_URL` set, every API request,
+including helper commands like `+agenda` and `+triage`, goes to the
+`rootUrl` in the proxy's discovery documents. `gws` refuses to connect to
+`*.googleapis.com` directly, so a request that would skip the proxy fails
+instead. Exceptions: `oauth2.googleapis.com` and the userinfo lookup during
+`gws auth` commands, and Model Armor's regional endpoints
+(`*.rep.googleapis.com`). If the override is set without
+`GOOGLE_WORKSPACE_CLI_AUTH=none`, `gws` warns on stderr that access tokens
+will be sent to the proxy.
+
 ## AI Agent Skills
 
 The repo ships 100+ Agent Skills (`SKILL.md` files) — one for every supported API, plus higher-level helpers for common workflows and 50 curated recipes for Gmail, Drive, Docs, Calendar, and Sheets. See the full [Skills Index](docs/skills.md) for the complete list.

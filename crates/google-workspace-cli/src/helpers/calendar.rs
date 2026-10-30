@@ -263,10 +263,12 @@ async fn handle_agenda(matches: &ArgMatches) -> Result<(), GwsError> {
     // client already built above for timezone resolution
     let calendar_filter = matches.get_one::<String>("calendar");
 
+    let base = crate::api_base::api_base(crate::api_base::Api::Calendar).await?;
+
     // 1. List all calendars
-    let list_url = "https://www.googleapis.com/calendar/v3/users/me/calendarList";
+    let list_url = format!("{base}users/me/calendarList");
     let list_resp = client
-        .get(list_url)
+        .get(&list_url)
         .maybe_bearer_auth(&token)
         .send()
         .await
@@ -327,12 +329,13 @@ async fn handle_agenda(matches: &ArgMatches) -> Result<(), GwsError> {
     let mut all_events: Vec<Value> = stream::iter(filtered_calendars)
         .map(|cal| {
             let client = &client;
+            let base = &base;
             let token = &token;
             let time_min = &time_min;
             let time_max = &time_max;
             async move {
                 let events_url = format!(
-                    "https://www.googleapis.com/calendar/v3/calendars/{}/events",
+                    "{base}calendars/{}/events",
                     crate::validate::encode_path_segment(&cal.id),
                 );
 
@@ -527,6 +530,67 @@ fn build_insert_request(
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::test_util::EnvVarGuard;
+    use serial_test::serial;
+
+    #[tokio::test]
+    #[serial]
+    async fn agenda_routes_every_request_through_discovery_proxy() {
+        let root = std::sync::Arc::new(std::sync::OnceLock::<String>::new());
+        let doc_root = std::sync::Arc::clone(&root);
+        let (proxy, requests) = crate::test_util::serve_json(move |path| {
+            let path = path.split('?').next().unwrap_or(path);
+            match path {
+                "/discovery/v1/apis/calendar/v3/rest" => Some(json!({
+                    "name": "calendar", "version": "v3",
+                    "rootUrl": format!("{}/", doc_root.get().unwrap()),
+                    "servicePath": "calendar/v3/"
+                })),
+                "/calendar/v3/users/me/settings/timezone" => Some(json!({ "value": "UTC" })),
+                "/calendar/v3/users/me/calendarList" => {
+                    Some(json!({ "items": [{ "id": "primary", "summary": "Me" }] }))
+                }
+                "/calendar/v3/calendars/primary/events" => Some(json!({ "items": [] })),
+                _ => None,
+            }
+        })
+        .await;
+        root.set(proxy.clone()).unwrap();
+
+        let config = tempfile::tempdir().unwrap();
+        let _config = EnvVarGuard::set("GOOGLE_WORKSPACE_CLI_CONFIG_DIR", config.path());
+        let _auth = EnvVarGuard::set("GOOGLE_WORKSPACE_CLI_AUTH", "none");
+        let _base = EnvVarGuard::set("GOOGLE_WORKSPACE_CLI_DISCOVERY_BASE_URL", &proxy);
+
+        // `--format` is a global flag the real CLI adds above helpers.
+        let cmd = CalendarHelper
+            .inject_commands(Command::new("calendar"), &make_mock_doc())
+            .arg(Arg::new("format").long("format").global(true));
+        let matches = cmd
+            .try_get_matches_from(["calendar", "+agenda", "--today", "--format", "json"])
+            .unwrap();
+        handle_agenda(matches.subcommand_matches("+agenda").unwrap())
+            .await
+            .unwrap();
+
+        let paths: Vec<String> = requests
+            .lock()
+            .unwrap()
+            .iter()
+            .map(|r| {
+                r.split_whitespace()
+                    .nth(1)
+                    .unwrap_or("")
+                    .split('?')
+                    .next()
+                    .unwrap()
+                    .to_string()
+            })
+            .collect();
+        assert!(paths.contains(&"/calendar/v3/users/me/settings/timezone".to_string()));
+        assert!(paths.contains(&"/calendar/v3/users/me/calendarList".to_string()));
+        assert!(paths.contains(&"/calendar/v3/calendars/primary/events".to_string()));
+    }
 
     fn make_mock_doc() -> crate::discovery::RestDescription {
         let mut doc = crate::discovery::RestDescription::default();

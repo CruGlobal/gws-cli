@@ -370,8 +370,9 @@ pub(super) async fn fetch_message_metadata(
     token: &str,
     message_id: &str,
 ) -> Result<OriginalMessage, GwsError> {
+    let base = crate::api_base::api_base(crate::api_base::Api::Gmail).await?;
     let url = format!(
-        "https://gmail.googleapis.com/gmail/v1/users/me/messages/{}",
+        "{base}gmail/v1/users/me/messages/{}",
         crate::validate::encode_path_segment(message_id)
     );
 
@@ -453,13 +454,11 @@ async fn fetch_send_as_identities(
     client: &reqwest::Client,
     token: &str,
 ) -> Result<Vec<SendAsIdentity>, GwsError> {
-    let resp = crate::client::send_with_retry(|| {
-        client
-            .get("https://gmail.googleapis.com/gmail/v1/users/me/settings/sendAs")
-            .maybe_bearer_auth(token)
-    })
-    .await
-    .map_err(|e| GwsError::Other(anyhow::anyhow!("Failed to fetch sendAs settings: {e}")))?;
+    let base = crate::api_base::api_base(crate::api_base::Api::Gmail).await?;
+    let url = format!("{base}gmail/v1/users/me/settings/sendAs");
+    let resp = crate::client::send_with_retry(|| client.get(&url).maybe_bearer_auth(token))
+        .await
+        .map_err(|e| GwsError::Other(anyhow::anyhow!("Failed to fetch sendAs settings: {e}")))?;
 
     if !resp.status().is_success() {
         let status = resp.status().as_u16();
@@ -646,9 +645,11 @@ async fn fetch_profile_display_name(
     client: &reqwest::Client,
     token: &str,
 ) -> Result<Option<String>, GwsError> {
+    let base = crate::api_base::api_base(crate::api_base::Api::People).await?;
+    let url = format!("{base}v1/people/me");
     let resp = crate::client::send_with_retry(|| {
         client
-            .get("https://people.googleapis.com/v1/people/me")
+            .get(&url)
             .query(&[("personFields", "names")])
             .maybe_bearer_auth(token)
     })
@@ -692,8 +693,9 @@ async fn fetch_attachment_data(
     message_id: &str,
     attachment_id: &str,
 ) -> Result<Vec<u8>, GwsError> {
+    let base = crate::api_base::api_base(crate::api_base::Api::Gmail).await?;
     let url = format!(
-        "https://gmail.googleapis.com/gmail/v1/users/me/messages/{}/attachments/{}",
+        "{base}gmail/v1/users/me/messages/{}/attachments/{}",
         crate::validate::encode_path_segment(message_id),
         crate::validate::encode_path_segment(attachment_id),
     );

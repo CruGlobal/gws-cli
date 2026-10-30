@@ -35,9 +35,7 @@ pub async fn fetch_discovery_document(
     version: &str,
 ) -> anyhow::Result<RestDescription> {
     let cache_dir = crate::auth_commands::config_dir().join("cache");
-    let base_url = std::env::var(ENV_DISCOVERY_BASE_URL)
-        .ok()
-        .filter(|value| !value.trim().is_empty());
+    let base_url = base_url_override();
     google_workspace::discovery::fetch_discovery_document(
         service,
         version,
@@ -45,4 +43,34 @@ pub async fn fetch_discovery_document(
         base_url.as_deref(),
     )
     .await
+}
+
+/// Warning for a discovery proxy used without `GOOGLE_WORKSPACE_CLI_AUTH=none`:
+/// gws then sends its own bearer tokens to the proxy.
+pub fn proxy_credentials_warning(base_url: Option<&str>, no_auth: bool) -> Option<String> {
+    let base_url = base_url.filter(|_| !no_auth)?;
+    Some(format!(
+        "Warning: {ENV_DISCOVERY_BASE_URL} is set without GOOGLE_WORKSPACE_CLI_AUTH=none; \
+         Google access tokens will be sent to {base_url}"
+    ))
+}
+
+/// The `GOOGLE_WORKSPACE_CLI_DISCOVERY_BASE_URL` value, if set and non-blank.
+pub fn base_url_override() -> Option<String> {
+    std::env::var(ENV_DISCOVERY_BASE_URL)
+        .ok()
+        .filter(|value| !value.trim().is_empty())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn proxy_credentials_warning_only_when_tokens_reach_proxy() {
+        let warning = proxy_credentials_warning(Some("http://127.0.0.1:8080"), false).unwrap();
+        assert!(warning.contains("http://127.0.0.1:8080"));
+        assert!(proxy_credentials_warning(Some("http://127.0.0.1:8080"), true).is_none());
+        assert!(proxy_credentials_warning(None, false).is_none());
+    }
 }

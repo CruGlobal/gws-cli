@@ -27,12 +27,6 @@ pub mod script;
 pub mod sheets;
 pub mod workflows;
 
-/// Base URL for the Google Cloud Pub/Sub v1 API.
-///
-/// Shared across `events::subscribe` and `gmail::watch` so the constant
-/// is defined in a single place.
-pub(crate) const PUBSUB_API_BASE: &str = "https://pubsub.googleapis.com/v1";
-
 /// Returns a future that completes when a shutdown signal is received.
 ///
 /// On Unix this listens for both SIGINT (Ctrl+C) and SIGTERM; on other

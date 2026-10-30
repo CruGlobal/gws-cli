@@ -24,7 +24,32 @@ const MAX_RETRIES: u32 = 3;
 const MAX_RETRY_DELAY_SECS: u64 = 60;
 const CONNECT_TIMEOUT_SECS: u64 = 10;
 
-fn build_client_inner() -> Result<reqwest::Client, String> {
+/// Error a DNS resolver returns to refuse a host outright. Requests that fail
+/// with it are not retried.
+#[derive(Debug)]
+pub struct HostBlocked(pub String);
+
+impl std::fmt::Display for HostBlocked {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.write_str(&self.0)
+    }
+}
+
+impl std::error::Error for HostBlocked {}
+
+fn is_host_blocked(err: &reqwest::Error) -> bool {
+    let mut source = std::error::Error::source(err);
+    while let Some(e) = source {
+        if e.is::<HostBlocked>() {
+            return true;
+        }
+        source = e.source();
+    }
+    false
+}
+
+/// A client builder with the default headers and timeouts every gws client uses.
+pub fn client_builder() -> reqwest::ClientBuilder {
     let mut headers = HeaderMap::new();
     let name = env!("CARGO_PKG_NAME");
     let version = env!("CARGO_PKG_VERSION");
@@ -38,6 +63,10 @@ fn build_client_inner() -> Result<reqwest::Client, String> {
     reqwest::Client::builder()
         .default_headers(headers)
         .connect_timeout(std::time::Duration::from_secs(CONNECT_TIMEOUT_SECS))
+}
+
+fn build_client_inner() -> Result<reqwest::Client, String> {
+    client_builder()
         .build()
         .map_err(|e| format!("Failed to build HTTP client: {e}"))
 }
@@ -83,7 +112,7 @@ pub async fn send_with_retry(
                 let retry_after = compute_retry_delay(header_value, attempt);
                 tokio::time::sleep(std::time::Duration::from_secs(retry_after)).await;
             }
-            Err(e) if e.is_connect() || e.is_timeout() => {
+            Err(e) if (e.is_connect() || e.is_timeout()) && !is_host_blocked(&e) => {
                 // Transient network error — retry with exponential backoff
                 let delay = compute_retry_delay(None, attempt);
                 tokio::time::sleep(std::time::Duration::from_secs(delay)).await;

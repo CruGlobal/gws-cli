@@ -19,6 +19,7 @@
 //! It supports deep schema validation, OAuth / Service Account authentication,
 //! interactive prompts, and integration with Model Armor.
 
+mod api_base;
 mod auth;
 pub(crate) mod auth_commands;
 mod client;
@@ -38,6 +39,8 @@ mod schema;
 mod services;
 mod setup;
 mod setup_tui;
+#[cfg(test)]
+mod test_util;
 mod text;
 mod timezone;
 mod token_storage;
@@ -52,6 +55,13 @@ async fn main() {
 
     // Initialize structured logging (no-op if env vars are unset)
     logging::init_logging();
+
+    if let Some(warning) = discovery::proxy_credentials_warning(
+        discovery::base_url_override().as_deref(),
+        auth::no_auth_mode(),
+    ) {
+        eprintln!("{warning}");
+    }
 
     if let Err(err) = run().await {
         print_error_json(&err);
