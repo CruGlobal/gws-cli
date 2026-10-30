@@ -175,13 +175,11 @@ pub(super) struct ReplyConfig {
 /// Used in reply-all for self-dedup (excluding the user from recipients) and
 /// self-reply detection (switching to original-To-based addressing).
 async fn fetch_user_email(client: &reqwest::Client, token: &str) -> Result<String, GwsError> {
-    let resp = crate::client::send_with_retry(|| {
-        client
-            .get("https://gmail.googleapis.com/gmail/v1/users/me/profile")
-            .maybe_bearer_auth(token)
-    })
-    .await
-    .map_err(|e| GwsError::Other(anyhow::anyhow!("Failed to fetch user profile: {e}")))?;
+    let base = crate::api_base::api_base(crate::api_base::Api::Gmail).await?;
+    let url = format!("{base}gmail/v1/users/me/profile");
+    let resp = crate::client::send_with_retry(|| client.get(&url).maybe_bearer_auth(token))
+        .await
+        .map_err(|e| GwsError::Other(anyhow::anyhow!("Failed to fetch user profile: {e}")))?;
 
     if !resp.status().is_success() {
         let status = resp.status().as_u16();

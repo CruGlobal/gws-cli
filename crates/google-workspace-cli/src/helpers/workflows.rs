@@ -288,7 +288,8 @@ async fn handle_standup_report(matches: &ArgMatches) -> Result<(), GwsError> {
     // Fetch today's events
     let events_json = get_json(
         &client,
-        "https://www.googleapis.com/calendar/v3/calendars/primary/events",
+        &crate::api_base::api_url(crate::api_base::Api::Calendar, "calendars/primary/events")
+            .await?,
         &token,
         &[
             ("timeMin", time_min.as_str()),
@@ -326,7 +327,8 @@ async fn handle_standup_report(matches: &ArgMatches) -> Result<(), GwsError> {
     // Fetch open tasks
     let tasks_json = get_json(
         &client,
-        "https://tasks.googleapis.com/tasks/v1/lists/@default/tasks",
+        &crate::api_base::api_url(crate::api_base::Api::Tasks, "tasks/v1/lists/@default/tasks")
+            .await?,
         &token,
         &[("showCompleted", "false"), ("maxResults", "20")],
     )
@@ -382,10 +384,14 @@ async fn handle_meeting_prep(matches: &ArgMatches) -> Result<(), GwsError> {
     let tz = crate::timezone::resolve_account_timezone(&client, &token, None).await?;
     let now_rfc = chrono::Utc::now().with_timezone(&tz).to_rfc3339();
 
-    let events_url = format!(
-        "https://www.googleapis.com/calendar/v3/calendars/{}/events",
-        crate::validate::encode_path_segment(calendar_id),
-    );
+    let events_url = crate::api_base::api_url(
+        crate::api_base::Api::Calendar,
+        &format!(
+            "calendars/{}/events",
+            crate::validate::encode_path_segment(calendar_id)
+        ),
+    )
+    .await?;
     let events_json = get_json(
         &client,
         &events_url,
@@ -458,10 +464,14 @@ async fn handle_email_to_task(matches: &ArgMatches) -> Result<(), GwsError> {
         .unwrap_or("@default");
 
     // 1. Fetch the email
-    let msg_url = format!(
-        "https://gmail.googleapis.com/gmail/v1/users/me/messages/{}",
-        crate::validate::encode_path_segment(message_id),
-    );
+    let msg_url = crate::api_base::api_url(
+        crate::api_base::Api::Gmail,
+        &format!(
+            "gmail/v1/users/me/messages/{}",
+            crate::validate::encode_path_segment(message_id)
+        ),
+    )
+    .await?;
     let msg_json = get_json(
         &client,
         &msg_url,
@@ -497,10 +507,11 @@ async fn handle_email_to_task(matches: &ArgMatches) -> Result<(), GwsError> {
     });
 
     let tasklist = crate::validate::validate_resource_name(tasklist)?;
-    let task_url = format!(
-        "https://tasks.googleapis.com/tasks/v1/lists/{}/tasks",
-        tasklist,
-    );
+    let task_url = crate::api_base::api_url(
+        crate::api_base::Api::Tasks,
+        &format!("tasks/v1/lists/{tasklist}/tasks"),
+    )
+    .await?;
 
     let resp = client
         .post(&task_url)
@@ -552,7 +563,8 @@ async fn handle_weekly_digest(matches: &ArgMatches) -> Result<(), GwsError> {
     // Fetch this week's events
     let events_json = get_json(
         &client,
-        "https://www.googleapis.com/calendar/v3/calendars/primary/events",
+        &crate::api_base::api_url(crate::api_base::Api::Calendar, "calendars/primary/events")
+            .await?,
         &token,
         &[
             ("timeMin", time_min.as_str()),
@@ -589,7 +601,8 @@ async fn handle_weekly_digest(matches: &ArgMatches) -> Result<(), GwsError> {
     // Fetch unread email count
     let gmail_json = get_json(
         &client,
-        "https://gmail.googleapis.com/gmail/v1/users/me/messages",
+        &crate::api_base::api_url(crate::api_base::Api::Gmail, "gmail/v1/users/me/messages")
+            .await?,
         &token,
         &[("q", "is:unread"), ("maxResults", "1")],
     )
@@ -631,10 +644,11 @@ async fn handle_file_announce(matches: &ArgMatches) -> Result<(), GwsError> {
     let custom_msg = matches.get_one::<String>("message");
 
     // 1. Fetch file metadata from Drive
-    let file_url = format!(
-        "https://www.googleapis.com/drive/v3/files/{}",
-        crate::validate::encode_path_segment(file_id),
-    );
+    let file_url = crate::api_base::api_url(
+        crate::api_base::Api::Drive,
+        &format!("files/{}", crate::validate::encode_path_segment(file_id)),
+    )
+    .await?;
     let file_json = get_json(
         &client,
         &file_url,
@@ -659,7 +673,9 @@ async fn handle_file_announce(matches: &ArgMatches) -> Result<(), GwsError> {
 
     let chat_body = json!({ "text": msg_text });
     let space = crate::validate::validate_resource_name(space)?;
-    let chat_url = format!("https://chat.googleapis.com/v1/{}/messages", space);
+    let chat_url =
+        crate::api_base::api_url(crate::api_base::Api::Chat, &format!("v1/{space}/messages"))
+            .await?;
 
     let chat_resp = client
         .post(&chat_url)

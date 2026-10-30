@@ -48,10 +48,11 @@ pub async fn handle_triage(matches: &ArgMatches) -> Result<(), GwsError> {
     let client = crate::client::build_client()?;
 
     // 1. List message IDs
-    let list_url = "https://gmail.googleapis.com/gmail/v1/users/me/messages";
+    let base = crate::api_base::api_base(crate::api_base::Api::Gmail).await?;
+    let list_url = format!("{base}gmail/v1/users/me/messages");
 
     let list_resp = client
-        .get(list_url)
+        .get(&list_url)
         .query(&[("q", query), ("maxResults", &max.to_string())])
         .maybe_bearer_auth(&token)
         .send()
@@ -98,10 +99,11 @@ pub async fn handle_triage(matches: &ArgMatches) -> Result<(), GwsError> {
     let results: Vec<Value> = stream::iter(msg_ids)
         .map(|msg_id| {
             let client = &client;
+            let base = &base;
             let token = &token;
             async move {
                 let get_url = format!(
-                    "https://gmail.googleapis.com/gmail/v1/users/me/messages/{}?format=metadata&metadataHeaders=From&metadataHeaders=Subject&metadataHeaders=Date",
+                    "{base}gmail/v1/users/me/messages/{}?format=metadata&metadataHeaders=From&metadataHeaders=Subject&metadataHeaders=Date",
                     msg_id
                 );
 

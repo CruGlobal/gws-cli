@@ -1,6 +1,5 @@
 use super::*;
 use crate::auth::AccessTokenProvider;
-use crate::helpers::PUBSUB_API_BASE;
 use crate::output::sanitize_for_terminal;
 use std::path::PathBuf;
 
@@ -120,6 +119,12 @@ pub(super) async fn handle_subscribe(
     }
 
     let client = crate::client::build_client()?;
+    let pubsub_api_base = format!(
+        "{}v1",
+        crate::api_base::api_base(crate::api_base::Api::PubSub).await?
+    );
+    let workspace_events_base =
+        crate::api_base::api_base(crate::api_base::Api::WorkspaceEvents).await?;
     let pubsub_token_provider = auth::token_provider(&[PUBSUB_SCOPE]);
 
     let (pubsub_subscription, topic_name, ws_subscription_name, created_resources) =
@@ -206,7 +211,7 @@ pub(super) async fn handle_subscribe(
                 )
             })?;
             let resp = client
-                .put(format!("{PUBSUB_API_BASE}/{topic}"))
+                .put(format!("{pubsub_api_base}/{topic}"))
                 .maybe_bearer_auth(token)
                 .header("Content-Type", "application/json")
                 .body("{}")
@@ -231,7 +236,7 @@ pub(super) async fn handle_subscribe(
                 "ackDeadlineSeconds": 60,
             });
             let resp = client
-                .put(format!("{PUBSUB_API_BASE}/{sub}"))
+                .put(format!("{pubsub_api_base}/{sub}"))
                 .maybe_bearer_auth(token)
                 .header("Content-Type", "application/json")
                 .json(&sub_body)
@@ -269,7 +274,7 @@ pub(super) async fn handle_subscribe(
             });
 
             let resp = client
-                .post("https://workspaceevents.googleapis.com/v1/subscriptions")
+                .post(format!("{workspace_events_base}v1/subscriptions"))
                 .maybe_bearer_auth(&ws_token)
                 .header("Content-Type", "application/json")
                 .json(&ws_body)
@@ -320,7 +325,7 @@ pub(super) async fn handle_subscribe(
         &pubsub_token_provider,
         &pubsub_subscription,
         config.clone(),
-        PUBSUB_API_BASE,
+        &pubsub_api_base,
     )
     .await;
 
@@ -331,14 +336,14 @@ pub(super) async fn handle_subscribe(
             // Delete Pub/Sub subscription
             if let Ok(pubsub_token) = pubsub_token_provider.access_token().await {
                 let _ = client
-                    .delete(format!("{PUBSUB_API_BASE}/{pubsub_subscription}"))
+                    .delete(format!("{pubsub_api_base}/{pubsub_subscription}"))
                     .maybe_bearer_auth(&pubsub_token)
                     .send()
                     .await;
                 // Delete Pub/Sub topic
                 if let Some(ref topic) = topic_name {
                     let _ = client
-                        .delete(format!("{PUBSUB_API_BASE}/{topic}"))
+                        .delete(format!("{pubsub_api_base}/{topic}"))
                         .maybe_bearer_auth(&pubsub_token)
                         .send()
                         .await;

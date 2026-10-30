@@ -1,10 +1,7 @@
 use super::*;
 use crate::auth::AccessTokenProvider;
-use crate::helpers::PUBSUB_API_BASE;
 use crate::output::colorize;
 use crate::output::sanitize_for_terminal;
-
-const GMAIL_API_BASE: &str = "https://gmail.googleapis.com/gmail/v1";
 
 /// Handles the `+watch` command — Gmail push notifications via Pub/Sub.
 pub(super) async fn handle_watch(
@@ -18,6 +15,14 @@ pub(super) async fn handle_watch(
     }
 
     let client = crate::client::build_client()?;
+    let pubsub_api_base = format!(
+        "{}v1",
+        crate::api_base::api_base(crate::api_base::Api::PubSub).await?
+    );
+    let gmail_api_base = format!(
+        "{}gmail/v1",
+        crate::api_base::api_base(crate::api_base::Api::Gmail).await?
+    );
     let gmail_token_provider = auth::token_provider(&[GMAIL_SCOPE]);
     let pubsub_token_provider = auth::token_provider(&[PUBSUB_SCOPE]);
 
@@ -52,7 +57,7 @@ pub(super) async fn handle_watch(
             // Create Pub/Sub topic
             eprintln!("Creating Pub/Sub topic: {t}");
             let resp = client
-                .put(format!("{PUBSUB_API_BASE}/{t}"))
+                .put(format!("{pubsub_api_base}/{t}"))
                 .maybe_bearer_auth(&pubsub_token)
                 .header("Content-Type", "application/json")
                 .body("{}")
@@ -81,7 +86,7 @@ pub(super) async fn handle_watch(
                 }
             });
             let resp = client
-                .post(format!("{PUBSUB_API_BASE}/{t}:setIamPolicy"))
+                .post(format!("{pubsub_api_base}/{t}:setIamPolicy"))
                 .maybe_bearer_auth(&pubsub_token)
                 .header("Content-Type", "application/json")
                 .json(&iam_body)
@@ -117,7 +122,7 @@ pub(super) async fn handle_watch(
             "ackDeadlineSeconds": 60,
         });
         let resp = client
-            .put(format!("{PUBSUB_API_BASE}/{sub}"))
+            .put(format!("{pubsub_api_base}/{sub}"))
             .maybe_bearer_auth(&pubsub_token)
             .header("Content-Type", "application/json")
             .json(&sub_body)
@@ -146,7 +151,7 @@ pub(super) async fn handle_watch(
         }
 
         let resp = client
-            .post(format!("{GMAIL_API_BASE}/users/me/watch"))
+            .post(format!("{gmail_api_base}/users/me/watch"))
             .maybe_bearer_auth(&gmail_token)
             .header("Content-Type", "application/json")
             .json(&watch_body)
@@ -188,7 +193,7 @@ pub(super) async fn handle_watch(
 
     // Get initial historyId for tracking
     let profile_resp = client
-        .get(format!("{GMAIL_API_BASE}/users/me/profile"))
+        .get(format!("{gmail_api_base}/users/me/profile"))
         .maybe_bearer_auth(&gmail_token)
         .send()
         .await
@@ -208,8 +213,8 @@ pub(super) async fn handle_watch(
         pubsub_token_provider: &pubsub_token_provider,
         gmail_token_provider: &gmail_token_provider,
         sanitize_config,
-        pubsub_api_base: PUBSUB_API_BASE,
-        gmail_api_base: GMAIL_API_BASE,
+        pubsub_api_base: &pubsub_api_base,
+        gmail_api_base: &gmail_api_base,
     };
     let result = watch_pull_loop(
         &runtime,
@@ -225,13 +230,13 @@ pub(super) async fn handle_watch(
             eprintln!("\nCleaning up Pub/Sub resources...");
             if let Ok(pubsub_token) = pubsub_token_provider.access_token().await {
                 let _ = client
-                    .delete(format!("{PUBSUB_API_BASE}/{}", pubsub_subscription))
+                    .delete(format!("{pubsub_api_base}/{}", pubsub_subscription))
                     .maybe_bearer_auth(&pubsub_token)
                     .send()
                     .await;
                 if let Some(ref topic) = topic_name {
                     let _ = client
-                        .delete(format!("{PUBSUB_API_BASE}/{}", topic))
+                        .delete(format!("{pubsub_api_base}/{}", topic))
                         .maybe_bearer_auth(&pubsub_token)
                         .send()
                         .await;

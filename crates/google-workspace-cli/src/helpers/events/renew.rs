@@ -62,6 +62,7 @@ pub(super) async fn handle_renew(
 
     // Real run logic
     let client = crate::client::build_client()?;
+    let base = crate::api_base::api_base(crate::api_base::Api::WorkspaceEvents).await?;
     let ws_token = auth::get_token(&[WORKSPACE_EVENTS_SCOPE])
         .await
         .map_err(|e| GwsError::Auth(format!("Failed to get token: {e}")))?;
@@ -70,9 +71,7 @@ pub(super) async fn handle_renew(
         let name = crate::validate::validate_resource_name(&name)?;
         eprintln!("Reactivating subscription: {name}");
         let resp = client
-            .post(format!(
-                "https://workspaceevents.googleapis.com/v1/{name}:reactivate"
-            ))
+            .post(format!("{base}v1/{name}:reactivate"))
             .maybe_bearer_auth(&ws_token)
             .header("Content-Type", "application/json")
             .body("{}")
@@ -88,7 +87,7 @@ pub(super) async fn handle_renew(
     } else {
         let within_secs = parse_duration(&config.within)?;
         let resp = client
-            .get("https://workspaceevents.googleapis.com/v1/subscriptions")
+            .get(format!("{base}v1/subscriptions"))
             .maybe_bearer_auth(&ws_token)
             .send()
             .await
@@ -109,9 +108,7 @@ pub(super) async fn handle_renew(
                 let name = crate::validate::validate_resource_name(&name)?;
                 eprintln!("Renewing {name}...");
                 let _ = client
-                    .post(format!(
-                        "https://workspaceevents.googleapis.com/v1/{name}:reactivate"
-                    ))
+                    .post(format!("{base}v1/{name}:reactivate"))
                     .maybe_bearer_auth(&ws_token)
                     .header("Content-Type", "application/json")
                     .body("{}")

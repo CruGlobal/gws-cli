@@ -77,9 +77,10 @@ fn write_cache(tz_name: &str) {
 
 /// Fetch the account timezone from the Google Calendar Settings API.
 async fn fetch_account_timezone(client: &reqwest::Client, token: &str) -> Result<Tz, GwsError> {
-    let url = "https://www.googleapis.com/calendar/v3/users/me/settings/timezone";
+    let base = crate::api_base::api_base(crate::api_base::Api::Calendar).await?;
+    let url = format!("{base}users/me/settings/timezone");
     let resp = client
-        .get(url)
+        .get(&url)
         .maybe_bearer_auth(token)
         .send()
         .await

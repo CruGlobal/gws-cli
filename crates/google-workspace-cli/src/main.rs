@@ -19,6 +19,7 @@
 //! It supports deep schema validation, OAuth / Service Account authentication,
 //! interactive prompts, and integration with Model Armor.
 
+mod api_base;
 mod auth;
 pub(crate) mod auth_commands;
 mod client;
