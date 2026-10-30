@@ -35,9 +35,7 @@ pub async fn fetch_discovery_document(
     version: &str,
 ) -> anyhow::Result<RestDescription> {
     let cache_dir = crate::auth_commands::config_dir().join("cache");
-    let base_url = std::env::var(ENV_DISCOVERY_BASE_URL)
-        .ok()
-        .filter(|value| !value.trim().is_empty());
+    let base_url = base_url_override();
     google_workspace::discovery::fetch_discovery_document(
         service,
         version,
@@ -46,3 +44,11 @@ pub async fn fetch_discovery_document(
     )
     .await
 }
+
+/// The `GOOGLE_WORKSPACE_CLI_DISCOVERY_BASE_URL` value, if set and non-blank.
+pub fn base_url_override() -> Option<String> {
+    std::env::var(ENV_DISCOVERY_BASE_URL)
+        .ok()
+        .filter(|value| !value.trim().is_empty())
+}
+

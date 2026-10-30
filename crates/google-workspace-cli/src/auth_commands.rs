@@ -661,7 +661,8 @@ async fn handle_login_inner(
 
 /// Fetch the authenticated user's email from Google's userinfo endpoint.
 async fn fetch_userinfo_email(access_token: &str) -> Option<String> {
-    let client = match crate::client::build_client() {
+    // Auth endpoints don't go through the discovery proxy, so skip its guard.
+    let client = match google_workspace::client::build_client() {
         Ok(c) => c,
         Err(_) => return None,
     };

@@ -38,6 +38,8 @@ mod schema;
 mod services;
 mod setup;
 mod setup_tui;
+#[cfg(test)]
+mod test_util;
 mod text;
 mod timezone;
 mod token_storage;
