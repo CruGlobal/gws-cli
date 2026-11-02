@@ -2,7 +2,7 @@
 name: gws-sheets-read
 description: "Google Sheets: Read values from a spreadsheet."
 metadata:
-  version: 0.24.8
+  version: 0.25.0
   openclaw:
     category: "productivity"
     requires:
