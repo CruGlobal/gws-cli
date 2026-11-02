@@ -2,7 +2,7 @@
 name: recipe-schedule-recurring-event
 description: "Create a recurring Google Calendar event with attendees."
 metadata:
-  version: 0.24.8
+  version: 0.25.0
   openclaw:
     category: "recipe"
     domain: "scheduling"
