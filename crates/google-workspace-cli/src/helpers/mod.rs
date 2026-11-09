@@ -103,6 +103,29 @@ pub trait Helper: Send + Sync {
     fn helper_only(&self) -> bool {
         false
     }
+
+    /// `+` commands that are safe under `--dry-run`: they honor it or make no changes.
+    /// Unlisted commands are rejected when `--dry-run` is set.
+    fn dry_run_safe_commands(&self) -> &'static [&'static str] {
+        &[]
+    }
+}
+
+/// Rejects `--dry-run` for helper commands that would ignore it and make real changes.
+pub fn check_dry_run_support(helper: &dyn Helper, matches: &ArgMatches) -> Result<(), GwsError> {
+    let Some((name, sub)) = matches.subcommand() else {
+        return Ok(());
+    };
+    if !name.starts_with('+') {
+        return Ok(());
+    }
+    let flag = |m: &ArgMatches| matches!(m.try_get_one::<bool>("dry-run"), Ok(Some(true)));
+    if (flag(matches) || flag(sub)) && !helper.dry_run_safe_commands().contains(&name) {
+        return Err(GwsError::Validation(format!(
+            "`{name}` does not support --dry-run yet"
+        )));
+    }
+    Ok(())
 }
 
 pub fn get_helper(service: &str) -> Option<Box<dyn Helper>> {
@@ -118,5 +141,102 @@ pub fn get_helper(service: &str) -> Option<Box<dyn Helper>> {
         "modelarmor" => Some(Box::new(modelarmor::ModelArmorHelper)),
         "workflow" => Some(Box::new(workflows::WorkflowHelper)),
         _ => None,
+    }
+}
+
+#[cfg(test)]
+mod dry_run_guard_tests {
+    use super::*;
+
+    const SERVICES: [&str; 10] = [
+        "gmail",
+        "sheets",
+        "docs",
+        "chat",
+        "drive",
+        "calendar",
+        "script",
+        "workspaceevents",
+        "modelarmor",
+        "workflow",
+    ];
+
+    fn matches_for(helper: &dyn Helper, args: &[&str]) -> ArgMatches {
+        let root = Command::new("gws").arg(
+            clap::Arg::new("dry-run")
+                .long("dry-run")
+                .action(clap::ArgAction::SetTrue)
+                .global(true),
+        );
+        let doc = crate::discovery::RestDescription::default();
+        let names: Vec<String> = helper
+            .inject_commands(Command::new("probe"), &doc)
+            .get_subcommands()
+            .map(|c| c.get_name().to_string())
+            .collect();
+        let root = names
+            .into_iter()
+            .fold(root, |cmd, name| cmd.subcommand(Command::new(name)));
+        root.try_get_matches_from(std::iter::once("gws").chain(args.iter().copied()))
+            .unwrap()
+    }
+
+    fn check(service: &str, args: &[&str]) -> Result<(), GwsError> {
+        let helper = get_helper(service).unwrap();
+        let matches = matches_for(helper.as_ref(), args);
+        check_dry_run_support(helper.as_ref(), &matches)
+    }
+
+    #[test]
+    fn rejects_mutating_helpers_under_dry_run() {
+        for (service, cmd) in [
+            ("workflow", "+file-announce"),
+            ("workflow", "+email-to-task"),
+            ("gmail", "+watch"),
+            ("modelarmor", "+create-template"),
+        ] {
+            match check(service, &[cmd, "--dry-run"]).unwrap_err() {
+                GwsError::Validation(msg) => {
+                    assert_eq!(msg, format!("`{cmd}` does not support --dry-run yet"))
+                }
+                other => panic!("expected Validation, got {other:?}"),
+            }
+            assert!(check(service, &["--dry-run", cmd]).is_err());
+        }
+    }
+
+    #[test]
+    fn allows_mutating_helpers_without_dry_run() {
+        assert!(check("workflow", &["+file-announce"]).is_ok());
+        assert!(check("gmail", &["+watch"]).is_ok());
+    }
+
+    #[test]
+    fn allows_safe_helpers_under_dry_run() {
+        for (service, cmd) in [
+            ("workflow", "+standup-report"),
+            ("gmail", "+triage"),
+            ("gmail", "+send"),
+            ("calendar", "+agenda"),
+            ("modelarmor", "+sanitize-prompt"),
+            ("workspaceevents", "+subscribe"),
+        ] {
+            assert!(check(service, &[cmd, "--dry-run"]).is_ok(), "{cmd}");
+        }
+    }
+
+    #[test]
+    fn dry_run_safe_commands_exist() {
+        let doc = crate::discovery::RestDescription::default();
+        for service in SERVICES {
+            let helper = get_helper(service).unwrap();
+            let cmd = helper.inject_commands(Command::new("probe"), &doc);
+            for name in helper.dry_run_safe_commands() {
+                assert!(
+                    cmd.find_subcommand(name).is_some(),
+                    "{service}: unknown command {name}"
+                );
+            }
+        }
     }
 }

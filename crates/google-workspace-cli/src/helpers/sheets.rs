@@ -102,6 +102,10 @@ TIPS:
         cmd
     }
 
+    fn dry_run_safe_commands(&self) -> &'static [&'static str] {
+        &["+append", "+read"]
+    }
+
     fn handle<'a>(
         &'a self,
         doc: &'a crate::discovery::RestDescription,

@@ -171,6 +171,10 @@ TIPS:
         cmd
     }
 
+    fn dry_run_safe_commands(&self) -> &'static [&'static str] {
+        &["+subscribe", "+renew"]
+    }
+
     fn handle<'a>(
         &'a self,
         doc: &'a crate::discovery::RestDescription,
