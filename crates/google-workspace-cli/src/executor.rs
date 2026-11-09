@@ -238,6 +238,50 @@ async fn build_http_request(
     Ok(request)
 }
 
+/// Applies a Model Armor outcome to `json_val`. Returns `Err(blocked_json)` when
+/// block mode must suppress the output: on a match, or when the sanitizer call failed.
+fn apply_sanitization(
+    json_val: &mut Value,
+    outcome: Result<crate::helpers::modelarmor::SanitizationResult, GwsError>,
+    mode: &crate::helpers::modelarmor::SanitizeMode,
+) -> Result<(), Value> {
+    let block = *mode == crate::helpers::modelarmor::SanitizeMode::Block;
+    match outcome {
+        Ok(result) => {
+            let is_match = result.filter_match_state == "MATCH_FOUND";
+            if is_match {
+                eprintln!(
+                    "⚠️  Model Armor: prompt injection detected (filterMatchState: MATCH_FOUND)"
+                );
+            }
+            if is_match && block {
+                return Err(json!({
+                    "error": "Content blocked by Model Armor",
+                    "sanitizationResult": serde_json::to_value(&result).unwrap_or_default(),
+                }));
+            }
+            if let Some(obj) = json_val.as_object_mut() {
+                obj.insert(
+                    "_sanitization".to_string(),
+                    serde_json::to_value(&result).unwrap_or_default(),
+                );
+            }
+            Ok(())
+        }
+        Err(e) => {
+            let msg = sanitize_for_terminal(&e.to_string());
+            eprintln!("⚠️  Model Armor sanitization failed: {msg}");
+            if block {
+                return Err(json!({
+                    "error": "Content blocked by Model Armor",
+                    "sanitizationError": msg,
+                }));
+            }
+            Ok(())
+        }
+    }
+}
+
 /// Handle a JSON response: parse, sanitize via Model Armor, output, and check pagination.
 /// Returns `Ok(true)` if the pagination loop should continue.
 #[allow(clippy::too_many_arguments)]
@@ -255,44 +299,17 @@ async fn handle_json_response(
     if let Ok(mut json_val) = serde_json::from_str::<Value>(body_text) {
         *pages_fetched += 1;
 
-        // Run Model Armor sanitization if --sanitize is enabled
         if let Some(template) = sanitize_template {
             let text_to_check = serde_json::to_string(&json_val).unwrap_or_default();
-            match crate::helpers::modelarmor::sanitize_text(template, &text_to_check).await {
-                Ok(result) => {
-                    let is_match = result.filter_match_state == "MATCH_FOUND";
-                    if is_match {
-                        eprintln!("⚠️  Model Armor: prompt injection detected (filterMatchState: MATCH_FOUND)");
-                    }
-
-                    if is_match && *sanitize_mode == crate::helpers::modelarmor::SanitizeMode::Block
-                    {
-                        let blocked = serde_json::json!({
-                            "error": "Content blocked by Model Armor",
-                            "sanitizationResult": serde_json::to_value(&result).unwrap_or_default(),
-                        });
-                        println!(
-                            "{}",
-                            serde_json::to_string_pretty(&blocked).unwrap_or_default()
-                        );
-                        return Err(GwsError::Other(anyhow::anyhow!(
-                            "Content blocked by Model Armor"
-                        )));
-                    }
-
-                    if let Some(obj) = json_val.as_object_mut() {
-                        obj.insert(
-                            "_sanitization".to_string(),
-                            serde_json::to_value(&result).unwrap_or_default(),
-                        );
-                    }
-                }
-                Err(e) => {
-                    eprintln!(
-                        "⚠️  Model Armor sanitization failed: {}",
-                        sanitize_for_terminal(&e.to_string())
-                    );
-                }
+            let outcome = crate::helpers::modelarmor::sanitize_text(template, &text_to_check).await;
+            if let Err(blocked) = apply_sanitization(&mut json_val, outcome, sanitize_mode) {
+                println!(
+                    "{}",
+                    serde_json::to_string_pretty(&blocked).unwrap_or_default()
+                );
+                return Err(GwsError::Other(anyhow::anyhow!(
+                    "Content blocked by Model Armor"
+                )));
             }
         }
 
@@ -2144,6 +2161,81 @@ mod tests {
             }
             _ => panic!("Expected Api error"),
         }
+    }
+
+    fn sanitizer_failure() -> Result<crate::helpers::modelarmor::SanitizationResult, GwsError> {
+        Err(GwsError::Other(anyhow::anyhow!("quota exceeded")))
+    }
+
+    fn sanitizer_result(state: &str) -> crate::helpers::modelarmor::SanitizationResult {
+        crate::helpers::modelarmor::SanitizationResult {
+            filter_match_state: state.to_string(),
+            filter_results: json!({}),
+            invocation_result: String::new(),
+        }
+    }
+
+    #[test]
+    fn test_apply_sanitization_error_block_mode_blocks() {
+        use crate::helpers::modelarmor::SanitizeMode;
+        let mut val = json!({"secret": "x"});
+        let blocked =
+            apply_sanitization(&mut val, sanitizer_failure(), &SanitizeMode::Block).unwrap_err();
+        assert_eq!(blocked["error"], "Content blocked by Model Armor");
+        assert!(blocked["sanitizationError"]
+            .as_str()
+            .unwrap()
+            .contains("quota exceeded"));
+    }
+
+    #[test]
+    fn test_apply_sanitization_error_warn_mode_continues() {
+        use crate::helpers::modelarmor::SanitizeMode;
+        let mut val = json!({"a": 1});
+        assert!(apply_sanitization(&mut val, sanitizer_failure(), &SanitizeMode::Warn).is_ok());
+        assert_eq!(val, json!({"a": 1}));
+    }
+
+    #[test]
+    fn test_apply_sanitization_match_block_mode_blocks() {
+        use crate::helpers::modelarmor::SanitizeMode;
+        let mut val = json!({"a": 1});
+        let blocked = apply_sanitization(
+            &mut val,
+            Ok(sanitizer_result("MATCH_FOUND")),
+            &SanitizeMode::Block,
+        )
+        .unwrap_err();
+        assert_eq!(
+            blocked["sanitizationResult"]["filterMatchState"],
+            "MATCH_FOUND"
+        );
+    }
+
+    #[test]
+    fn test_apply_sanitization_match_warn_mode_annotates() {
+        use crate::helpers::modelarmor::SanitizeMode;
+        let mut val = json!({"a": 1});
+        apply_sanitization(
+            &mut val,
+            Ok(sanitizer_result("MATCH_FOUND")),
+            &SanitizeMode::Warn,
+        )
+        .unwrap();
+        assert_eq!(val["_sanitization"]["filterMatchState"], "MATCH_FOUND");
+    }
+
+    #[test]
+    fn test_apply_sanitization_no_match_block_mode_passes() {
+        use crate::helpers::modelarmor::SanitizeMode;
+        let mut val = json!({"a": 1});
+        apply_sanitization(
+            &mut val,
+            Ok(sanitizer_result("NO_MATCH_FOUND")),
+            &SanitizeMode::Block,
+        )
+        .unwrap();
+        assert_eq!(val["a"], 1);
     }
 }
 

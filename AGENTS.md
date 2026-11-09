@@ -223,7 +223,7 @@ See [`src/helpers/README.md`](crates/google-workspace-cli/src/helpers/README.md)
 | Variable | Description |
 |---|---|
 | `GOOGLE_WORKSPACE_CLI_SANITIZE_TEMPLATE` | Default Model Armor template (overridden by `--sanitize` flag) |
-| `GOOGLE_WORKSPACE_CLI_SANITIZE_MODE` | `warn` (default) or `block` |
+| `GOOGLE_WORKSPACE_CLI_SANITIZE_MODE` | `warn` (default) or `block`. `block` also blocks (non-zero exit) when the Model Armor call fails |
 
 ### Helpers
 

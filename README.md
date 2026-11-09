@@ -397,6 +397,8 @@ gws gmail users messages get --params '...' \
 | `GOOGLE_WORKSPACE_CLI_SANITIZE_TEMPLATE` | Default Model Armor template |
 | `GOOGLE_WORKSPACE_CLI_SANITIZE_MODE`     | `warn` (default) or `block`  |
 
+In `block` mode, output is suppressed and the command exits non-zero when Model Armor finds a match. It also blocks when the Model Armor call itself fails (network, quota, bad template), so unchecked content never passes through. `warn` mode logs the failure and continues.
+
 ## Environment Variables
 
 All variables are optional. See [`.env.example`](.env.example) for a copy-paste template.
