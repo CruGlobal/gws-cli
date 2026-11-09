@@ -144,13 +144,42 @@ TIPS:
 }
 
 fn visit_dirs(dir: &Path, files: &mut Vec<serde_json::Value>) -> Result<(), GwsError> {
-    if dir.is_dir() {
-        for entry in fs::read_dir(dir).context("Failed to read dir")? {
-            let entry = entry.context("Failed to read entry")?;
-            let path = entry.path();
-            if path.is_dir() {
-                visit_dirs(&path, files)?;
-            } else if let Some(file_obj) = process_file(&path)? {
+    if !dir.is_dir() {
+        return Ok(());
+    }
+    let root =
+        fs::canonicalize(dir).with_context(|| format!("Failed to resolve '{}'", dir.display()))?;
+    walk_dir(dir, &root, files)
+}
+
+fn walk_dir(dir: &Path, root: &Path, files: &mut Vec<serde_json::Value>) -> Result<(), GwsError> {
+    for entry in fs::read_dir(dir).context("Failed to read dir")? {
+        let entry = entry.context("Failed to read entry")?;
+        let path = entry.path();
+        // file_type() does not follow symlinks.
+        let file_type = entry.file_type().context("Failed to read file type")?;
+        if file_type.is_symlink() {
+            eprintln!("warning: skipping symlink '{}'", path.display());
+            continue;
+        }
+        if file_type.is_dir() {
+            let name = entry.file_name();
+            let name = name.to_string_lossy();
+            if name.starts_with('.') || name == "node_modules" {
+                continue;
+            }
+            walk_dir(&path, root, files)?;
+        } else if file_type.is_file() {
+            let canonical = fs::canonicalize(&path)
+                .with_context(|| format!("Failed to resolve '{}'", path.display()))?;
+            if !canonical.starts_with(root) {
+                return Err(GwsError::Validation(format!(
+                    "Refusing to read '{}': resolves outside '{}'",
+                    path.display(),
+                    root.display()
+                )));
+            }
+            if let Some(file_obj) = process_file(&path)? {
                 files.push(file_obj);
             }
         }
@@ -284,5 +313,73 @@ mod tests {
 
         assert!(names.contains(&"root"));
         assert!(names.contains(&"utils"));
+    }
+
+    fn pushed_names(dir: &Path) -> Vec<String> {
+        let mut files = Vec::new();
+        visit_dirs(dir, &mut files).unwrap();
+        let mut names: Vec<String> = files
+            .iter()
+            .map(|f| f["name"].as_str().unwrap().to_string())
+            .collect();
+        names.sort();
+        names
+    }
+
+    #[test]
+    fn test_visit_dirs_skips_hidden_dirs() {
+        let dir = tempdir().unwrap();
+        File::create(dir.path().join("main.gs")).unwrap();
+        let hidden = dir.path().join(".secrets");
+        fs::create_dir(&hidden).unwrap();
+        File::create(hidden.join("config.js")).unwrap();
+        let nm = dir.path().join("node_modules");
+        fs::create_dir(&nm).unwrap();
+        File::create(nm.join("dep.js")).unwrap();
+
+        assert_eq!(pushed_names(dir.path()), vec!["main"]);
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn test_visit_dirs_skips_symlinked_file() {
+        let outside = tempdir().unwrap();
+        let secret = outside.path().join("id_ed25519");
+        fs::write(&secret, "PRIVATE KEY").unwrap();
+
+        let dir = tempdir().unwrap();
+        File::create(dir.path().join("main.gs")).unwrap();
+        std::os::unix::fs::symlink(&secret, dir.path().join("leak.js")).unwrap();
+
+        assert_eq!(pushed_names(dir.path()), vec!["main"]);
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn test_visit_dirs_skips_symlinked_dir() {
+        let outside = tempdir().unwrap();
+        File::create(outside.path().join("other.gs")).unwrap();
+
+        let dir = tempdir().unwrap();
+        File::create(dir.path().join("main.gs")).unwrap();
+        std::os::unix::fs::symlink(outside.path(), dir.path().join("linked")).unwrap();
+
+        assert_eq!(pushed_names(dir.path()), vec!["main"]);
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn test_visit_dirs_symlinked_root_still_works() {
+        let real = tempdir().unwrap();
+        File::create(real.path().join("main.gs")).unwrap();
+        let sub = real.path().join("src");
+        fs::create_dir(&sub).unwrap();
+        File::create(sub.join("util.js")).unwrap();
+
+        let holder = tempdir().unwrap();
+        let link = holder.path().join("project");
+        std::os::unix::fs::symlink(real.path(), &link).unwrap();
+
+        assert_eq!(pushed_names(&link), vec!["main", "util"]);
     }
 }
