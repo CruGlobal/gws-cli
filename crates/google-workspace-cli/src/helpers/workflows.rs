@@ -41,6 +41,10 @@ impl Helper for WorkflowHelper {
         cmd
     }
 
+    fn dry_run_safe_commands(&self) -> &'static [&'static str] {
+        &["+standup-report", "+meeting-prep", "+weekly-digest"]
+    }
+
     fn handle<'a>(
         &'a self,
         _doc: &'a crate::discovery::RestDescription,

@@ -59,6 +59,10 @@ TIPS:
         cmd
     }
 
+    fn dry_run_safe_commands(&self) -> &'static [&'static str] {
+        &["+send"]
+    }
+
     fn handle<'a>(
         &'a self,
         doc: &'a crate::discovery::RestDescription,

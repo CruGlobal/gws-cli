@@ -241,6 +241,10 @@ TIPS:
         true
     }
 
+    fn dry_run_safe_commands(&self) -> &'static [&'static str] {
+        &["+sanitize-prompt", "+sanitize-response"]
+    }
+
     fn handle<'a>(
         &'a self,
         _doc: &'a RestDescription,

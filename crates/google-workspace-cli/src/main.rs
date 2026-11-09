@@ -217,6 +217,7 @@ async fn run() -> Result<(), GwsError> {
 
     // Check if a helper wants to handle this command
     if let Some(helper) = helpers::get_helper(&doc.name) {
+        helpers::check_dry_run_support(helper.as_ref(), &matches)?;
         if helper.handle(&doc, &matches, &sanitize_config).await? {
             return Ok(());
         }

@@ -85,7 +85,7 @@ Helpers are implemented using the `Helper` trait defined in `mod.rs`.
    - `crate::validate::encode_path_segment()` for URL path segments
    - `crate::output::sanitize_for_terminal()` for error messages
 4. **Has tests** — at minimum: command registration, required args, happy path
-5. **Supports `--dry-run`** where the helper creates or mutates resources
+5. **Supports `--dry-run`** where the helper creates or mutates resources, and lists the command in `Helper::dry_run_safe_commands()` (read-only commands too). Unlisted commands fail with a validation error under `--dry-run`.
 
 ### Development Steps
 
