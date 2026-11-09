@@ -33,8 +33,8 @@ node -e "
   require('fs').writeFileSync('./npm/package.json', JSON.stringify(pkg, null, 2) + '\n');
 "
 
-# Update Cargo.lock to match
-cargo generate-lockfile
+# Refresh workspace crate versions in Cargo.lock only (no dependency re-resolution)
+cargo update -w
 
 # Update flake.lock if nix is available
 if command -v nix > /dev/null 2>&1; then
