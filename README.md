@@ -203,7 +203,7 @@ export GOOGLE_WORKSPACE_CLI_TOKEN=$(gcloud auth print-access-token)
 | 3        | Encrypted credentials  | `gws auth login`                        |
 | 4        | Plaintext credentials  | `~/.config/gws/credentials.json`        |
 
-Environment variables can also live in a `.env` file.
+Environment variables can also live in a `.env` file in the current directory. See [`.env` files](#env-files).
 
 ### No-Auth Mode
 
@@ -415,8 +415,23 @@ All variables are optional. See [`.env.example`](.env.example) for a copy-paste 
 | `GOOGLE_WORKSPACE_CLI_LOG` | Log level for stderr (e.g., `gws=debug`). Off by default. |
 | `GOOGLE_WORKSPACE_CLI_LOG_FILE` | Directory for JSON log files with daily rotation. Off by default. |
 | `GOOGLE_WORKSPACE_PROJECT_ID` | GCP project ID override for quota/billing and fallback for helper commands |
+| `GOOGLE_WORKSPACE_CLI_DOTENV` | `.env` loading: unset = load and warn, `1` = load quietly, `0` = off. See [`.env` files](#env-files) |
 
-Environment variables can also be set in a `.env` file (loaded via [dotenvy](https://crates.io/crates/dotenvy)).
+### `.env` files
+
+gws loads a `.env` file from the **current directory only** (parent directories are not searched). Variables already set in your shell win over the file. The file is trusted like your shell environment, so only run gws in directories whose `.env` you trust.
+
+If the file sets a variable that changes where requests go or which credentials are used (any `GOOGLE_WORKSPACE_CLI_*` variable except `LOG`, `LOG_FILE` and `SANITIZE_MODE`, plus `GOOGLE_APPLICATION_CREDENTIALS`, proxy and TLS certificate variables), gws prints a warning naming those variables (never their values).
+
+`GOOGLE_WORKSPACE_CLI_DOTENV` controls this:
+
+| Value | Behavior |
+|---|---|
+| unset | Load `./.env`; warn about sensitive variables |
+| `1` | Load `./.env` quietly |
+| `0` | Never load `.env` |
+
+Set it in your shell profile; a value inside `.env` itself is ignored.
 
 ## Exit Codes
 

@@ -73,6 +73,7 @@ The repository is a Cargo workspace with two crates:
 | `executor.rs`       | HTTP request construction, response handling, schema validation          |
 | `schema.rs`         | `gws schema` command — introspect API method schemas                     |
 | `logging.rs`        | Opt-in structured logging (stderr + file) via `tracing`                  |
+| `dotenv.rs`         | Loads `./.env` (cwd only); `GOOGLE_WORKSPACE_CLI_DOTENV` opt-out/quiet    |
 | `timezone.rs`       | Account timezone resolution: `--timezone` flag, Calendar Settings API    |
 
 ## Demo Videos
@@ -238,4 +239,4 @@ See [`src/helpers/README.md`](crates/google-workspace-cli/src/helpers/README.md)
 | `GOOGLE_WORKSPACE_CLI_LOG` | Log level filter for stderr output (e.g., `gws=debug`). Off by default. |
 | `GOOGLE_WORKSPACE_CLI_LOG_FILE` | Directory for JSON-line log files with daily rotation. Off by default. |
 
-All variables can also live in a `.env` file (loaded via `dotenvy`).
+All variables can also live in a `.env` file in the current directory (`src/dotenv.rs`; parents are not searched; shell values win). `GOOGLE_WORKSPACE_CLI_DOTENV`: unset = load and warn on stderr about sensitive variables, `1` = load quietly, `0` = don't load.

@@ -26,6 +26,7 @@ mod client;
 mod commands;
 pub(crate) mod credential_store;
 mod discovery;
+mod dotenv;
 mod error;
 mod executor;
 mod formatter;
@@ -50,8 +51,9 @@ use error::{print_error_json, GwsError};
 
 #[tokio::main]
 async fn main() {
-    // Load .env file if present (silently ignored if missing)
-    let _ = dotenvy::dotenv();
+    if let Some(msg) = dotenv::load() {
+        eprintln!("{msg}");
+    }
 
     // Initialize structured logging (no-op if env vars are unset)
     logging::init_logging();
