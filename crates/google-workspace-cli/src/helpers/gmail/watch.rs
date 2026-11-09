@@ -460,11 +460,9 @@ async fn fetch_and_output_messages(
                             }
                         }
                         Err(e) => {
-                            eprintln!(
-                                "{} Model Armor sanitization failed for message {msg_id}: {}",
-                                colorize("warning:", "33"),
-                                sanitize_for_terminal(&e.to_string())
-                            );
+                            if !allow_on_sanitize_error(&sanitize_config.mode, &e, &msg_id) {
+                                continue;
+                            }
                         }
                     }
                 }
@@ -526,6 +524,31 @@ fn apply_sanitization_result(
         }
     }
     Some(full_msg)
+}
+
+/// Whether a message may be emitted after the sanitizer call failed. Block mode fails closed.
+fn allow_on_sanitize_error(
+    mode: &crate::helpers::modelarmor::SanitizeMode,
+    err: &GwsError,
+    msg_id: &str,
+) -> bool {
+    let reason = sanitize_for_terminal(&err.to_string());
+    match mode {
+        crate::helpers::modelarmor::SanitizeMode::Block => {
+            eprintln!(
+                "{} Message {msg_id} blocked: Model Armor sanitization failed: {reason}",
+                colorize("blocked:", "31")
+            );
+            false
+        }
+        crate::helpers::modelarmor::SanitizeMode::Warn => {
+            eprintln!(
+                "{} Model Armor sanitization failed for message {msg_id}: {reason}",
+                colorize("warning:", "33")
+            );
+            true
+        }
+    }
 }
 
 fn extract_message_ids_from_history(history_body: &Value) -> Vec<String> {
@@ -928,6 +951,26 @@ mod tests {
         // If no match found, block mode returns the exact input untouched.
         assert_eq!(output, msg);
         assert!(output.get("_sanitization").is_none());
+    }
+
+    #[test]
+    fn test_allow_on_sanitize_error_block_mode_drops_message() {
+        let err = GwsError::Other(anyhow::anyhow!("quota exceeded"));
+        assert!(!allow_on_sanitize_error(
+            &crate::helpers::modelarmor::SanitizeMode::Block,
+            &err,
+            "msg1"
+        ));
+    }
+
+    #[test]
+    fn test_allow_on_sanitize_error_warn_mode_keeps_message() {
+        let err = GwsError::Other(anyhow::anyhow!("quota exceeded"));
+        assert!(allow_on_sanitize_error(
+            &crate::helpers::modelarmor::SanitizeMode::Warn,
+            &err,
+            "msg1"
+        ));
     }
 
     #[tokio::test]
