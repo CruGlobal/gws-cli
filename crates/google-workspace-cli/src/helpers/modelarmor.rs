@@ -84,8 +84,29 @@ pub struct ModelArmorHelper;
 /// Build the regional base URL for Model Armor API.
 /// The discovery doc rootUrl (modelarmor.us.rep.googleapis.com) is incorrect —
 /// Model Armor requires region-specific endpoints: modelarmor.{region}.rep.googleapis.com
-fn regional_base_url(location: &str) -> String {
-    format!("https://modelarmor.{location}.rep.googleapis.com/v1")
+/// The location is interpolated into the host, so it is validated first.
+fn regional_base_url(location: &str) -> Result<String, GwsError> {
+    validate_location(location)?;
+    Ok(format!(
+        "https://modelarmor.{location}.rep.googleapis.com/v1"
+    ))
+}
+
+/// Enforces `^[a-z][a-z0-9-]{1,62}$`.
+fn validate_location(location: &str) -> Result<(), GwsError> {
+    let bytes = location.as_bytes();
+    let valid = (2..=63).contains(&bytes.len())
+        && bytes[0].is_ascii_lowercase()
+        && bytes[1..]
+            .iter()
+            .all(|b| b.is_ascii_lowercase() || b.is_ascii_digit() || *b == b'-');
+    if valid {
+        Ok(())
+    } else {
+        Err(GwsError::Validation(format!(
+            "Invalid Model Armor location '{location}': must match ^[a-z][a-z0-9-]{{1,62}}$"
+        )))
+    }
 }
 
 /// Extract location from a full template resource name.
@@ -327,7 +348,7 @@ async fn handle_sanitize(
 
     let body = parse_sanitize_args(matches, data_field)?;
 
-    let base = regional_base_url(location);
+    let base = regional_base_url(location)?;
     let url = format!("{base}/{template}:{method_name}");
 
     model_armor_post(&url, &body).await
@@ -367,21 +388,21 @@ fn parse_create_template_args(matches: &ArgMatches) -> Result<CreateTemplateConf
     })
 }
 
-pub fn build_create_template_url(config: &CreateTemplateConfig) -> String {
-    let base = regional_base_url(&config.location);
+pub fn build_create_template_url(config: &CreateTemplateConfig) -> Result<String, GwsError> {
+    let base = regional_base_url(&config.location)?;
     let project = crate::validate::encode_path_segment(&config.project);
     let location = crate::validate::encode_path_segment(&config.location);
     let parent = format!("projects/{project}/locations/{location}");
-    format!(
+    Ok(format!(
         "{base}/{parent}/templates?templateId={}",
         crate::validate::encode_path_segment(&config.template_id)
-    )
+    ))
 }
 
 /// Handle +create-template
 async fn handle_create_template(matches: &ArgMatches) -> Result<(), GwsError> {
     let config = parse_create_template_args(matches)?;
-    let url = build_create_template_url(&config);
+    let url = build_create_template_url(&config)?;
 
     eprintln!(
         "Creating template '{}' with preset: {}",
@@ -514,7 +535,7 @@ mod tests {
     #[test]
     fn test_regional_base_url() {
         assert_eq!(
-            regional_base_url("us-central1"),
+            regional_base_url("us-central1").unwrap(),
             "https://modelarmor.us-central1.rep.googleapis.com/v1"
         );
     }
@@ -522,9 +543,70 @@ mod tests {
     #[test]
     fn test_regional_base_url_different_region() {
         assert_eq!(
-            regional_base_url("europe-west1"),
+            regional_base_url("europe-west1").unwrap(),
             "https://modelarmor.europe-west1.rep.googleapis.com/v1"
         );
+    }
+
+    const BAD_LOCATIONS: &[&str] = &[
+        "evil#",
+        "evil/",
+        "evil\\",
+        "evil?",
+        "user@evil",
+        "evil.example.com",
+        "",
+    ];
+
+    #[test]
+    fn test_regional_base_url_rejects_bad_locations() {
+        for loc in BAD_LOCATIONS {
+            assert!(
+                matches!(regional_base_url(loc), Err(GwsError::Validation(_))),
+                "accepted {loc:?}"
+            );
+        }
+    }
+
+    #[test]
+    fn test_validate_location_bounds() {
+        assert!(validate_location("us").is_ok());
+        assert!(validate_location(&format!("a{}", "b".repeat(62))).is_ok());
+        assert!(validate_location(&format!("a{}", "b".repeat(63))).is_err());
+        assert!(validate_location("u").is_err());
+        assert!(validate_location("1us").is_err());
+        assert!(validate_location("US-CENTRAL1").is_err());
+    }
+
+    #[test]
+    fn test_build_sanitize_request_data_rejects_bad_locations() {
+        // '/' splits the segment, so "evil/" can't reach the host via a template name.
+        for loc in BAD_LOCATIONS.iter().filter(|l| !l.contains('/')) {
+            let template = format!("projects/p/locations/{loc}/templates/t");
+            assert!(
+                build_sanitize_request_data(&template, "x", "sanitizeUserPrompt").is_err(),
+                "accepted {loc:?}"
+            );
+        }
+    }
+
+    #[test]
+    fn test_build_create_template_url_rejects_bad_locations() {
+        for loc in BAD_LOCATIONS {
+            let config = CreateTemplateConfig {
+                project: "p".to_string(),
+                location: loc.to_string(),
+                template_id: "t".to_string(),
+                body: "{}".to_string(),
+            };
+            assert!(
+                matches!(
+                    build_create_template_url(&config),
+                    Err(GwsError::Validation(_))
+                ),
+                "accepted {loc:?}"
+            );
+        }
     }
 
     #[test]
@@ -577,7 +659,7 @@ pub fn build_sanitize_request_data(
         )
     })?;
 
-    let base = regional_base_url(location);
+    let base = regional_base_url(location)?;
     let url = format!("{base}/{template}:{method}");
 
     // Identify data field based on method
@@ -671,7 +753,7 @@ mod parsing_tests {
             template_id: "t".to_string(),
             body: "{}".to_string(),
         };
-        let url = build_create_template_url(&config);
+        let url = build_create_template_url(&config).unwrap();
         // encode_path_segment encodes hyphens ('-' → '%2D')
         assert_eq!(
             url,
@@ -696,7 +778,7 @@ mod parsing_tests {
             "--project",
             "p",
             "--location",
-            "l",
+            "us-central1",
             "--template-id",
             "t",
             "--json",
@@ -704,7 +786,7 @@ mod parsing_tests {
         ]);
         let config = parse_create_template_args(&matches).unwrap();
         assert_eq!(config.project, "p");
-        assert_eq!(config.location, "l");
+        assert_eq!(config.location, "us-central1");
         assert_eq!(config.template_id, "t");
         assert_eq!(config.body, "{\"a\":1}");
     }
@@ -716,7 +798,7 @@ mod parsing_tests {
             "--project",
             "p",
             "--location",
-            "l",
+            "us-central1",
             "--template-id",
             "t",
             "--preset",
@@ -724,7 +806,7 @@ mod parsing_tests {
         ]);
         let config = parse_create_template_args(&matches).unwrap();
         assert_eq!(config.project, "p");
-        assert_eq!(config.location, "l");
+        assert_eq!(config.location, "us-central1");
         assert_eq!(config.template_id, "t");
         assert!(config.body.contains("piAndJailbreakFilterSettings"));
     }
@@ -757,7 +839,7 @@ mod parsing_tests {
             template_id: "my-template".to_string(),
             body: "{}".to_string(),
         };
-        let url = build_create_template_url(&config);
+        let url = build_create_template_url(&config).unwrap();
         assert!(url.contains("projects/my%2Dproject"));
         assert!(url.contains("locations/us%2Dcentral1"));
         assert!(url.contains("templateId=my%2Dtemplate"));
