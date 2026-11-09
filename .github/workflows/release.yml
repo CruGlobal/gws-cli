@@ -6,9 +6,7 @@
 
 name: Release
 permissions:
-  contents: write
-  attestations: write
-  id-token: write
+  contents: read
 
 on:
   pull_request:
@@ -111,12 +109,6 @@ jobs:
           (Get-FileHash "$ARTIFACT.zip" -Algorithm SHA256).Hash.ToLower() + "  $ARTIFACT.zip" | Out-File -Encoding ascii "$ARTIFACT.zip.sha256"
         shell: pwsh
 
-      - name: Attest
-        if: github.ref_type == 'tag'
-        uses: actions/attest-build-provenance@4d101475d8b20a2381f78447822ac1eab6504dd8 # v4.2.2
-        with:
-          subject-path: gws-${{ matrix.target }}.${{ matrix.archive }}
-
       - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: binary-${{ matrix.target }}
@@ -128,6 +120,11 @@ jobs:
     needs: [plan, build]
     if: github.ref_type == 'tag'
     runs-on: ubuntu-latest
+    # Write perms live only here, so PR builds run with a read-only token and no OIDC.
+    permissions:
+      contents: write
+      attestations: write
+      id-token: write
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v4
 
@@ -136,6 +133,13 @@ jobs:
           pattern: binary-*
           path: artifacts/
           merge-multiple: true
+
+      - name: Attest
+        uses: actions/attest-build-provenance@4d101475d8b20a2381f78447822ac1eab6504dd8 # v4.2.2
+        with:
+          subject-path: |
+            artifacts/*.tar.gz
+            artifacts/*.zip
 
       - name: Create GitHub Release
         env:
