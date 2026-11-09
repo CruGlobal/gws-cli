@@ -22,6 +22,7 @@ ignore = [
     { id = "RUSTSEC-2026-0372", reason = "zvariant_derive merged into zbus 6; waiting on secret-service" },
 ]
 db-urls = ["https://github.com/rustsec/advisory-db"]
+yanked = "deny"
 
 # Licenses — allowlist of acceptable licenses
 [licenses]
