@@ -31,9 +31,3 @@ updates:
     directory: "/"
     schedule:
       interval: daily
-
-  # npm installer shim
-  - package-ecosystem: npm
-    directory: "/npm"
-    schedule:
-      interval: daily

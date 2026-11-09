@@ -26,15 +26,8 @@ done
 sed -i.bak -E "s/(google-workspace = \{ version = \")[^\"]+/\1${VERSION}/" crates/google-workspace-cli/Cargo.toml
 rm -f crates/google-workspace-cli/Cargo.toml.bak
 
-# Update npm installer package.json version
-node -e "
-  const pkg = require('./npm/package.json');
-  pkg.version = '${VERSION}';
-  require('fs').writeFileSync('./npm/package.json', JSON.stringify(pkg, null, 2) + '\n');
-"
-
-# Update Cargo.lock to match
-cargo generate-lockfile
+# Refresh workspace crate versions in Cargo.lock only (no dependency re-resolution)
+cargo update -w
 
 # Update flake.lock if nix is available
 if command -v nix > /dev/null 2>&1; then
@@ -45,5 +38,5 @@ fi
 cargo run -- generate-skills --output-dir skills
 
 # Stage the changed files so changesets/action commits them
-git add crates/*/Cargo.toml Cargo.lock flake.nix flake.lock skills/ npm/package.json
+git add crates/*/Cargo.toml Cargo.lock flake.nix flake.lock skills/
 

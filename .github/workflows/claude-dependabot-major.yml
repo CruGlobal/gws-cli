@@ -134,7 +134,7 @@ jobs:
             determine it needs a human.
 
             Each dependency may be a Rust crate (Cargo.toml), a GitHub Action
-            (.github/workflows/*.yml), or an npm package (package.json, npm/).
+            (.github/workflows/*.yml), or an npm package (package.json).
 
             Steps:
               1. For each major / 0.x-minor bump, read the dependency's CHANGELOG /
