@@ -94,6 +94,8 @@ gws schema drive.files.list
 gws drive files list --params '{"pageSize": 100}' --page-all | jq -r '.files[].name'
 ```
 
+`--dry-run` prints the request instead of sending it. Helper (`+verb`) commands that don't support it yet (e.g. `gmail +watch`, `workflow +file-announce`, `workflow +email-to-task`, `modelarmor +create-template`) exit with a validation error instead of making changes. Read-only helpers (e.g. `calendar +agenda`, `gmail +triage`) still run normally under `--dry-run`.
+
 ## Authentication
 
 The CLI supports multiple auth workflows so it works on your laptop, in CI, and on a server.
