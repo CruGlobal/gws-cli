@@ -32,11 +32,6 @@
       - any-glob-to-any-file:
           - crates/google-workspace-cli/src/setup_tui.rs
 
-"area: mcp":
-  - changed-files:
-      - any-glob-to-any-file:
-          - crates/google-workspace-cli/src/mcp_server.rs
-
 "area: skills":
   - changed-files:
       - any-glob-to-any-file:
