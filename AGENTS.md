@@ -173,7 +173,7 @@ When adding a new helper or CLI command:
 
 ## PR Labels
 
-Use these labels to categorize pull requests and issues:
+The File Labeler job (`.github/workflows/automation.yml`, rules in `.github/labeler.yml`) applies these to PRs automatically from changed files, with `sync-labels`, so hand-added `area:` labels that don't match the rules get removed. Add them by hand mainly on issues.
 
 - `area: discovery` — Discovery document fetching, caching, parsing
 - `area: http` — Request execution, URL building, response handling
@@ -182,6 +182,7 @@ Use these labels to categorize pull requests and issues:
 - `area: distribution` — Nix flake, GitHub Actions release workflow, install methods
 - `area: auth` — OAuth, credentials, multi-account, ADC
 - `area: skills` — AI skill generation and management
+- `area: core` — `main.rs`, commands, errors, formatting, validation, `helpers/**`
 
 ## Helper Commands (`+verb`)
 
