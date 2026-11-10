@@ -93,7 +93,7 @@ jobs:
           components: clippy
 
       - name: Install cargo-deny
-        uses: taiki-e/install-action@b80e2bb2635f28eb98b9fce1e2f0887e1535c6b2 # cargo-llvm-cov
+        uses: taiki-e/install-action@3a3daafd3b7f23b8f65d9f5ba2db203fb59b79e2 # cargo-llvm-cov
         with:
           tool: cargo-deny
 
@@ -106,7 +106,7 @@ jobs:
       # continue-on-error: a failed/timed-out run falls through to an issue.
       - name: Claude fix
         continue-on-error: true
-        uses: anthropics/claude-code-action@4845bacbb38b3c4b15d948f035349786f678e068 # v1.0.267
+        uses: anthropics/claude-code-action@61a9c274fa7110a66dfafc1bbbced03833eb25fe # v1.0.269
         with:
           claude_code_oauth_token: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}
           prompt: |
