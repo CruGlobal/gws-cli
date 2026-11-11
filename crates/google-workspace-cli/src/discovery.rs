@@ -106,4 +106,24 @@ mod tests {
         assert!(err.contains(&format!("{server}/p")), "{err}");
         assert!(!err.contains("k1"), "{err}");
     }
+
+    #[tokio::test]
+    async fn fetch_body_error_redacts_override() {
+        use tokio::io::{AsyncReadExt, AsyncWriteExt};
+        // 200 with a body cut short, so reading the body fails.
+        let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let addr = listener.local_addr().unwrap();
+        tokio::spawn(async move {
+            let (mut stream, _) = listener.accept().await.unwrap();
+            let mut buf = [0_u8; 4096];
+            let _ = stream.read(&mut buf).await;
+            let _ = stream
+                .write_all(b"HTTP/1.1 200 OK\r\nContent-Length: 100\r\n\r\n{")
+                .await;
+        });
+        let err = fetch_err(&format!("http://{addr}/p?key=k1")).await;
+        assert!(err.contains("Failed to read Discovery Document"), "{err}");
+        assert!(err.contains(&format!("http://{addr}/p")), "{err}");
+        assert!(!err.contains("k1"), "{err}");
+    }
 }

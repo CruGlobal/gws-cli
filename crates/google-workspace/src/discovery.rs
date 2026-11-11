@@ -301,7 +301,13 @@ pub async fn fetch_discovery_document(
     })?;
 
     let body = if resp.status().is_success() {
-        resp.text().await?
+        resp.text().await.map_err(|e| {
+            anyhow::anyhow!(
+                "Failed to read Discovery Document from {}: {}",
+                redact_url(&url),
+                e.without_url()
+            )
+        })?
     } else if let Some(alt_url) = discovery_fallback_url(service, base_url) {
         let alt_resp = client
             .get(&alt_url)
