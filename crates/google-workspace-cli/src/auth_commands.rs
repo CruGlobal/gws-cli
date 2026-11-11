@@ -1453,15 +1453,6 @@ async fn handle_status() -> Result<(), GwsError> {
                 }
             }
         }
-
-        // Show enabled APIs if we have a project_id
-        if let Some(pid) = output.get("project_id").and_then(|v| v.as_str()) {
-            let enabled = crate::setup::get_enabled_apis(pid);
-            if !enabled.is_empty() {
-                output["enabled_apis"] = json!(enabled);
-                output["enabled_api_count"] = json!(enabled.len());
-            }
-        }
     } // end !cfg!(test)
 
     println!(
