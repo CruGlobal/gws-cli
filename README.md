@@ -238,6 +238,15 @@ instead. Exceptions: `oauth2.googleapis.com` and the userinfo lookup during
 `GOOGLE_WORKSPACE_CLI_AUTH=none`, `gws` warns on stderr that access tokens
 will be sent to the proxy.
 
+Before sending an API request, `gws` checks the host that the discovery
+document's `rootUrl`/`baseUrl` points at. With the override set, the scheme,
+host and port must match the override URL. Without it, the URL must be
+`https` on `googleapis.com` or a subdomain. Anything else fails with a
+discovery error and nothing is sent. This also covers tampered files in the
+discovery cache. The `*.googleapis.com` connect guard above only blocks
+Google hosts; it is not an egress control and does not limit traffic to the
+proxy host.
+
 ## AI Agent Skills
 
 The repo ships 100+ Agent Skills (`SKILL.md` files) — one for every supported API, plus higher-level helpers for common workflows and 50 curated recipes for Gmail, Drive, Docs, Calendar, and Sheets. See the full [Skills Index](docs/skills.md) for the complete list.
