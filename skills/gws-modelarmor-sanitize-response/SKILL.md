@@ -2,7 +2,7 @@
 name: gws-modelarmor-sanitize-response
 description: "Google Model Armor: Sanitize a model response through a Model Armor template."
 metadata:
-  version: 0.25.0
+  version: 0.26.0
   openclaw:
     category: "security"
     requires:
