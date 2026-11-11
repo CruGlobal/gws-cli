@@ -145,6 +145,8 @@ fn parse_and_validate_inputs(
     }
 
     let (full_url, query_params) = build_url(doc, method, &params, is_media_upload)?;
+    // Checks the full URL, since `{+var}` path params can change the host.
+    crate::discovery::check_api_url(&full_url)?;
     let is_upload = is_media_upload && method.supports_media_upload;
 
     Ok(ExecutionInput {
@@ -2237,9 +2239,170 @@ mod tests {
         .unwrap();
         assert_eq!(val["a"], 1);
     }
+
+    const BASE_ENV: &str = "GOOGLE_WORKSPACE_CLI_DISCOVERY_BASE_URL";
+
+    fn host_check_doc(root_url: &str, base_url: Option<&str>) -> RestDescription {
+        RestDescription {
+            root_url: root_url.to_string(),
+            service_path: "drive/v3/".to_string(),
+            base_url: base_url.map(str::to_string),
+            ..Default::default()
+        }
+    }
+
+    fn host_check_method(path: &str) -> RestMethod {
+        let mut parameters = HashMap::new();
+        parameters.insert(
+            "name".to_string(),
+            MethodParameter {
+                location: Some("path".to_string()),
+                ..Default::default()
+            },
+        );
+        RestMethod {
+            http_method: "GET".to_string(),
+            path: path.to_string(),
+            parameters,
+            media_upload: Some(crate::discovery::MediaUpload {
+                protocols: Some(crate::discovery::MediaUploadProtocols {
+                    simple: Some(crate::discovery::MediaUploadProtocol {
+                        path: "/upload/drive/v3/files".to_string(),
+                        multipart: Some(true),
+                    }),
+                }),
+                accept: None,
+            }),
+            ..Default::default()
+        }
+    }
+
+    fn host_check(
+        doc: &RestDescription,
+        path: &str,
+        params: &str,
+        upload: bool,
+    ) -> Result<String, GwsError> {
+        parse_and_validate_inputs(doc, &host_check_method(path), Some(params), None, upload)
+            .map(|input| input.full_url)
+    }
+
+    #[test]
+    #[serial_test::serial]
+    fn host_check_without_override_allows_only_googleapis() {
+        let _guard = EnvVarGuard::remove(BASE_ENV);
+        let good = host_check_doc("https://www.googleapis.com/", None);
+        assert_eq!(
+            host_check(&good, "files", "{}", false).unwrap(),
+            "https://www.googleapis.com/drive/v3/files"
+        );
+        assert!(host_check(&good, "files", "{}", true).is_ok());
+
+        for doc in [
+            host_check_doc("https://evil.test/", None),
+            host_check_doc("http://www.googleapis.com/", None),
+            host_check_doc("https://googleapis.com.evil.test/", None),
+            host_check_doc(
+                "https://www.googleapis.com/",
+                Some("https://evil.test/drive/v3/"),
+            ),
+        ] {
+            let err = host_check(&doc, "files", "{}", false).unwrap_err();
+            assert!(matches!(err, GwsError::Discovery(_)), "{err}");
+        }
+
+        // Upload URLs use rootUrl even when baseUrl is fine.
+        let upload = host_check_doc(
+            "https://evil.test/",
+            Some("https://www.googleapis.com/drive/v3/"),
+        );
+        assert!(host_check(&upload, "files", "{}", false).is_ok());
+        let err = host_check(&upload, "files", "{}", true).unwrap_err();
+        assert!(matches!(err, GwsError::Discovery(_)), "{err}");
+
+        // A `{+var}` path param must not be able to move the host.
+        let bare = RestDescription {
+            root_url: "https://x.googleapis.com".to_string(),
+            ..Default::default()
+        };
+        let err = host_check(&bare, "{+name}", r#"{"name": ".evil.test/x"}"#, false).unwrap_err();
+        assert!(matches!(err, GwsError::Discovery(_)), "{err}");
+    }
+
+    #[test]
+    #[serial_test::serial]
+    fn host_check_with_override_requires_override_host() {
+        let _guard = EnvVarGuard::set(BASE_ENV, "http://127.0.0.1:8080");
+        let good = host_check_doc("http://127.0.0.1:8080/", None);
+        assert!(host_check(&good, "files", "{}", false).is_ok());
+        assert!(host_check(&good, "files", "{}", true).is_ok());
+        for root in [
+            "https://www.googleapis.com/",
+            "http://evil.test:8080/",
+            "http://127.0.0.1:9090/",
+        ] {
+            let err = host_check(&host_check_doc(root, None), "files", "{}", false).unwrap_err();
+            assert!(matches!(err, GwsError::Discovery(_)), "{root}: {err}");
+        }
+    }
+
+    #[tokio::test]
+    #[serial_test::serial]
+    async fn host_check_sends_no_token_to_foreign_root_url() {
+        let (proxy, _) = crate::test_util::serve_json(|_| Some(json!({}))).await;
+        let (foreign, foreign_requests) = crate::test_util::serve_json(|_| Some(json!({}))).await;
+        let _guard = EnvVarGuard::set(BASE_ENV, &proxy);
+        let doc = host_check_doc(&format!("{foreign}/"), None);
+        let err = execute_method(
+            &doc,
+            &host_check_method("files"),
+            None,
+            None,
+            Some("canary-token"),
+            AuthMethod::OAuth,
+            None,
+            None,
+            false,
+            &PaginationConfig::default(),
+            None,
+            &crate::helpers::modelarmor::SanitizeMode::Warn,
+            &crate::formatter::OutputFormat::default(),
+            true,
+        )
+        .await
+        .unwrap_err();
+        assert!(matches!(err, GwsError::Discovery(_)), "{err}");
+        assert!(foreign_requests.lock().unwrap().is_empty());
+    }
+
+    #[tokio::test]
+    #[serial_test::serial]
+    async fn host_check_rejects_poisoned_cache() {
+        let config = tempfile::tempdir().unwrap();
+        let _config = EnvVarGuard::set("GOOGLE_WORKSPACE_CLI_CONFIG_DIR", config.path());
+        let _guard = EnvVarGuard::remove(BASE_ENV);
+        let cache = config.path().join("cache");
+        std::fs::create_dir_all(&cache).unwrap();
+        std::fs::write(
+            cache.join("drive_v3.json"),
+            json!({
+                "name": "drive", "version": "v3",
+                "rootUrl": "https://evil.test/", "servicePath": "drive/v3/"
+            })
+            .to_string(),
+        )
+        .unwrap();
+        let doc = crate::discovery::fetch_discovery_document("drive", "v3")
+            .await
+            .unwrap();
+        assert_eq!(doc.root_url, "https://evil.test/");
+        let err = host_check(&doc, "files", "{}", false).unwrap_err();
+        assert!(matches!(err, GwsError::Discovery(_)), "{err}");
+    }
 }
 
 #[tokio::test]
+#[cfg_attr(test, serial_test::serial)]
 async fn test_execute_method_dry_run() {
     let mut schemas = HashMap::new();
     let mut properties = HashMap::new();

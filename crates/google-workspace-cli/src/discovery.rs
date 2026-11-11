@@ -56,6 +56,12 @@ pub fn proxy_credentials_warning(base_url: Option<&str>, no_auth: bool) -> Optio
     ))
 }
 
+/// Checks a URL built from a discovery doc against the allowed API hosts,
+/// using the current override. Call before attaching credentials.
+pub fn check_api_url(url: &str) -> Result<(), crate::error::GwsError> {
+    crate::validate::validate_api_url(url, base_url_override().as_deref())
+}
+
 /// The `GOOGLE_WORKSPACE_CLI_DISCOVERY_BASE_URL` value, if set and non-blank.
 pub fn base_url_override() -> Option<String> {
     std::env::var(ENV_DISCOVERY_BASE_URL)
@@ -125,5 +131,23 @@ mod tests {
         assert!(err.contains("Failed to read Discovery Document"), "{err}");
         assert!(err.contains(&format!("http://{addr}/p")), "{err}");
         assert!(!err.contains("k1"), "{err}");
+    }
+
+    #[test]
+    #[serial_test::serial]
+    fn check_api_url_follows_override() {
+        let url = "https://www.googleapis.com/drive/v3/files";
+        {
+            let _guard =
+                crate::test_util::EnvVarGuard::remove("GOOGLE_WORKSPACE_CLI_DISCOVERY_BASE_URL");
+            assert!(check_api_url(url).is_ok());
+            assert!(check_api_url("https://evil.com/x").is_err());
+        }
+        let _guard = crate::test_util::EnvVarGuard::set(
+            "GOOGLE_WORKSPACE_CLI_DISCOVERY_BASE_URL",
+            "http://127.0.0.1:8080",
+        );
+        assert!(check_api_url(url).is_err());
+        assert!(check_api_url("http://127.0.0.1:8080/drive/v3/files").is_ok());
     }
 }

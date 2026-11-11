@@ -350,12 +350,138 @@ pub fn validate_api_identifier(s: &str) -> Result<&str, GwsError> {
     Ok(s)
 }
 
+/// Checks that a request URL built from a discovery document points at an
+/// allowed host, so a bad `rootUrl`/`baseUrl` (proxy or cache) can't send
+/// credentials elsewhere. Without `override_base` the URL must be https on
+/// `googleapis.com` or a subdomain. With it, scheme, host and port must match
+/// the override. User info is always rejected.
+pub fn validate_api_url(url: &str, override_base: Option<&str>) -> Result<(), GwsError> {
+    let Ok(parsed) = reqwest::Url::parse(url) else {
+        return Err(GwsError::Discovery(
+            "Refusing to send request: discovery document's rootUrl/baseUrl is not a valid URL"
+                .to_string(),
+        ));
+    };
+    // Origin only: userinfo and query can hold secrets.
+    let target = parsed.origin().ascii_serialization();
+    let reject = |why: &str| {
+        Err(GwsError::Discovery(format!(
+            "Refusing to send request to {target}: {why} (from the discovery document's rootUrl/baseUrl)"
+        )))
+    };
+    if !parsed.username().is_empty() || parsed.password().is_some() {
+        return reject("URL must not contain user info");
+    }
+    let host = parsed.host_str().unwrap_or("");
+    match override_base {
+        None => {
+            let google = host == "googleapis.com" || host.ends_with(".googleapis.com");
+            if parsed.scheme() != "https" || !google {
+                return reject("API host must be https on googleapis.com");
+            }
+        }
+        Some(base) => {
+            let Ok(base) = reqwest::Url::parse(base.trim()) else {
+                return reject("discovery base URL override is not a valid URL");
+            };
+            let same = parsed.scheme() == base.scheme()
+                && Some(host) == base.host_str()
+                && parsed.port_or_known_default() == base.port_or_known_default();
+            if !same {
+                return reject(&format!(
+                    "API host must match the discovery base URL override ({})",
+                    base.origin().ascii_serialization()
+                ));
+            }
+        }
+    }
+    Ok(())
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
     use serial_test::serial;
     use std::fs;
     use tempfile::tempdir;
+
+    // --- validate_api_url ---
+
+    #[test]
+    fn api_url_accepts_google_hosts_without_override() {
+        for url in [
+            "https://www.googleapis.com/drive/v3/files",
+            "https://gmail.googleapis.com/gmail/v1/users/me",
+            "https://GMAIL.googleapis.com/x",
+            "https://googleapis.com/x",
+            "https://www.googleapis.com:443/x",
+        ] {
+            assert!(validate_api_url(url, None).is_ok(), "{url}");
+        }
+    }
+
+    #[test]
+    fn api_url_rejects_foreign_hosts_without_override() {
+        for url in [
+            "https://evil.com/x",
+            "https://evil.com/.googleapis.com/x",
+            "https://googleapis.com.evil.com/x",
+            "https://notgoogleapis.com/x",
+            "https://www.googleapis.com@evil.com/x",
+            "https://user:pw@www.googleapis.com/x",
+            "https://evil.com\\.googleapis.com/x",
+            "https://evil.com#.googleapis.com/x",
+            "https://evil.com?.googleapis.com/x",
+            "https://www.googleapis.com./x",
+            "http://www.googleapis.com/x",
+            "http://127.0.0.1:8080/x",
+            "www.googleapis.com/x",
+            "",
+        ] {
+            let err = validate_api_url(url, None).unwrap_err();
+            assert!(matches!(err, GwsError::Discovery(_)), "{url}");
+        }
+    }
+
+    #[test]
+    fn api_url_with_override_requires_override_origin() {
+        let base = Some("http://127.0.0.1:8080/");
+        assert!(validate_api_url("http://127.0.0.1:8080/gmail/v1/x", base).is_ok());
+        assert!(validate_api_url("https://proxy.test/x", Some("https://proxy.test")).is_ok());
+        assert!(validate_api_url("https://proxy.test:443/x", Some(" https://proxy.test ")).is_ok());
+        for url in [
+            "https://www.googleapis.com/x",
+            "https://evil.com/x",
+            "http://127.0.0.1:9090/x",
+            "https://127.0.0.1:8080/x",
+            "http://127.0.0.1.evil.com:8080/x",
+            "http://127.0.0.1:8080@evil.com:8080/x",
+            "http://user@127.0.0.1:8080/x",
+        ] {
+            let err = validate_api_url(url, base).unwrap_err();
+            assert!(matches!(err, GwsError::Discovery(_)), "{url}");
+        }
+    }
+
+    #[test]
+    fn api_url_error_hides_userinfo_and_query() {
+        let msg = validate_api_url(
+            "https://user:pw@evil.com/x?key=s3cret",
+            Some("https://u:p@proxy.test/?token=t0ken"),
+        )
+        .unwrap_err()
+        .to_string();
+        for secret in ["pw", "s3cret", "t0ken", "u:p"] {
+            assert!(!msg.contains(secret), "{secret} leaked: {msg}");
+        }
+        assert!(msg.contains("https://evil.com"));
+    }
+
+    #[test]
+    fn api_url_rejects_bad_override() {
+        let err = validate_api_url("https://www.googleapis.com/x", Some("not a url")).unwrap_err();
+        assert!(err.to_string().contains("override is not a valid URL"));
+    }
 
     // --- validate_safe_output_dir ---
 

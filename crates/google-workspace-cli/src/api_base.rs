@@ -67,7 +67,9 @@ pub(crate) async fn api_base(api: Api) -> Result<String, GwsError> {
                 "Failed to load {service}/{version} discovery document: {e}"
             ))
         })?;
-    Ok(base_from_doc(&doc))
+    let base = base_from_doc(&doc);
+    crate::discovery::check_api_url(&base)?;
+    Ok(base)
 }
 
 /// `api_base(api)` followed by `path`, a method path relative to that base.
@@ -129,17 +131,42 @@ mod tests {
     async fn api_base_with_override_uses_discovery_doc() {
         let dir = tempfile::tempdir().unwrap();
         let _config = EnvVarGuard::set("GOOGLE_WORKSPACE_CLI_CONFIG_DIR", dir.path());
-        let (server, requests) = crate::test_util::serve_json(|_| {
+        let root = std::sync::Arc::new(std::sync::OnceLock::<String>::new());
+        let doc_root = std::sync::Arc::clone(&root);
+        let (server, requests) = crate::test_util::serve_json(move |_| {
             Some(serde_json::json!({
                 "name": "tasks", "version": "v1",
-                "rootUrl": "http://proxy.test/", "servicePath": ""
+                "rootUrl": format!("{}/", doc_root.get().unwrap()), "servicePath": "tasks/v1/"
             }))
         })
         .await;
+        root.set(server.clone()).unwrap();
         let _guard = EnvVarGuard::set("GOOGLE_WORKSPACE_CLI_DISCOVERY_BASE_URL", &server);
-        assert_eq!(api_base(Api::Tasks).await.unwrap(), "http://proxy.test/");
+        assert_eq!(
+            api_base(Api::Tasks).await.unwrap(),
+            format!("{server}/tasks/v1/")
+        );
         let requests = requests.lock().unwrap();
         assert_eq!(requests.len(), 1);
         assert!(requests[0].starts_with("GET /discovery/v1/apis/tasks/v1/rest "));
+    }
+
+    #[tokio::test]
+    #[serial]
+    async fn api_base_with_override_rejects_foreign_root_url() {
+        let dir = tempfile::tempdir().unwrap();
+        let _config = EnvVarGuard::set("GOOGLE_WORKSPACE_CLI_CONFIG_DIR", dir.path());
+        for root_url in ["http://evil.test/", "https://www.googleapis.com/"] {
+            let (server, _) = crate::test_util::serve_json(move |_| {
+                Some(serde_json::json!({
+                    "name": "tasks", "version": "v1",
+                    "rootUrl": root_url, "servicePath": ""
+                }))
+            })
+            .await;
+            let _guard = EnvVarGuard::set("GOOGLE_WORKSPACE_CLI_DISCOVERY_BASE_URL", &server);
+            let err = api_base(Api::Tasks).await.unwrap_err();
+            assert!(matches!(err, GwsError::Discovery(_)), "{root_url}: {err}");
+        }
     }
 }
