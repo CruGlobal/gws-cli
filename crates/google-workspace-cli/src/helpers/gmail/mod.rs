@@ -12,7 +12,7 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-use super::Helper;
+use super::{build_api_error, Helper};
 pub mod forward;
 pub mod read;
 pub mod reply;
@@ -404,43 +404,6 @@ pub(super) async fn fetch_message_metadata(
         .map_err(|e| GwsError::Other(anyhow::anyhow!("Failed to parse message: {e}")))?;
 
     parse_original_message(&msg)
-}
-
-/// Build a `GwsError::Api` from an HTTP error response body, parsing the
-/// Google JSON error format when possible. Modeled after the executor's
-/// `handle_error_response`, extracting message, reason, and enable URL.
-pub(super) fn build_api_error(status: u16, body: &str, context: &str) -> GwsError {
-    let err_json: Option<Value> = serde_json::from_str(body).ok();
-    let err_obj = err_json.as_ref().and_then(|v| v.get("error"));
-    let message = err_obj
-        .and_then(|e| e.get("message"))
-        .and_then(|m| m.as_str())
-        .unwrap_or(body)
-        .to_string();
-    let reason = err_obj
-        .and_then(|e| e.get("errors"))
-        .and_then(|e| e.as_array())
-        .and_then(|arr| arr.first())
-        .and_then(|e| e.get("reason"))
-        .and_then(|r| r.as_str())
-        .or_else(|| {
-            err_obj
-                .and_then(|e| e.get("reason"))
-                .and_then(|r| r.as_str())
-        })
-        .unwrap_or("unknown")
-        .to_string();
-    let enable_url = if reason == "accessNotConfigured" {
-        crate::executor::extract_enable_url(&message)
-    } else {
-        None
-    };
-    GwsError::Api {
-        code: status,
-        message: format!("{context}: {message}"),
-        reason,
-        enable_url,
-    }
 }
 
 #[derive(Debug)]
@@ -3618,75 +3581,6 @@ mod tests {
     fn test_parse_profile_display_name_no_names_array() {
         let body = serde_json::json!({ "names": "not-an-array" });
         assert!(parse_profile_display_name(&body).is_none());
-    }
-
-    // --- build_api_error tests ---
-
-    #[test]
-    fn test_build_api_error_parses_google_json_format() {
-        let body = r#"{"error":{"code":403,"message":"Insufficient Permission","errors":[{"reason":"insufficientPermissions","domain":"global","message":"Insufficient Permission"}]}}"#;
-        let err = build_api_error(403, body, "Test context");
-        match err {
-            GwsError::Api {
-                code,
-                message,
-                reason,
-                enable_url,
-            } => {
-                assert_eq!(code, 403);
-                assert!(message.contains("Test context"));
-                assert!(message.contains("Insufficient Permission"));
-                assert_eq!(reason, "insufficientPermissions");
-                assert!(enable_url.is_none());
-            }
-            _ => panic!("Expected GwsError::Api"),
-        }
-    }
-
-    #[test]
-    fn test_build_api_error_falls_back_to_raw_body() {
-        let err = build_api_error(500, "Internal Server Error", "Test context");
-        match err {
-            GwsError::Api {
-                code,
-                message,
-                reason,
-                ..
-            } => {
-                assert_eq!(code, 500);
-                assert!(message.contains("Internal Server Error"));
-                assert_eq!(reason, "unknown");
-            }
-            _ => panic!("Expected GwsError::Api"),
-        }
-    }
-
-    #[test]
-    fn test_build_api_error_extracts_top_level_reason() {
-        let body = r#"{"error":{"code":404,"message":"Not Found","reason":"notFound"}}"#;
-        let err = build_api_error(404, body, "ctx");
-        match err {
-            GwsError::Api { reason, .. } => assert_eq!(reason, "notFound"),
-            _ => panic!("Expected GwsError::Api"),
-        }
-    }
-
-    #[test]
-    fn test_build_api_error_access_not_configured_extracts_url() {
-        let body = r#"{"error":{"code":403,"message":"People API has not been used in project 123 before or it is disabled. Enable it by visiting https://console.developers.google.com/apis/api/people.googleapis.com/overview?project=123 then retry.","errors":[{"reason":"accessNotConfigured"}]}}"#;
-        let err = build_api_error(403, body, "ctx");
-        match err {
-            GwsError::Api {
-                reason, enable_url, ..
-            } => {
-                assert_eq!(reason, "accessNotConfigured");
-                assert!(enable_url.is_some());
-                assert!(enable_url
-                    .unwrap()
-                    .contains("console.developers.google.com"));
-            }
-            _ => panic!("Expected GwsError::Api"),
-        }
     }
 
     #[test]
