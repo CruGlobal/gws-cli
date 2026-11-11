@@ -51,7 +51,8 @@ pub fn proxy_credentials_warning(base_url: Option<&str>, no_auth: bool) -> Optio
     let base_url = base_url.filter(|_| !no_auth)?;
     Some(format!(
         "Warning: {ENV_DISCOVERY_BASE_URL} is set without GOOGLE_WORKSPACE_CLI_AUTH=none; \
-         Google access tokens will be sent to {base_url}"
+         Google access tokens will be sent to {}",
+        redact_url(base_url)
     ))
 }
 
@@ -72,5 +73,37 @@ mod tests {
         assert!(warning.contains("http://127.0.0.1:8080"));
         assert!(proxy_credentials_warning(Some("http://127.0.0.1:8080"), true).is_none());
         assert!(proxy_credentials_warning(None, false).is_none());
+    }
+
+    #[test]
+    fn proxy_credentials_warning_redacts_url() {
+        let warning =
+            proxy_credentials_warning(Some("https://u:pw@proxy.test/b?key=k1"), false).unwrap();
+        assert!(warning.contains("https://proxy.test/b"), "{warning}");
+        assert!(
+            !warning.contains("pw") && !warning.contains("k1"),
+            "{warning}"
+        );
+    }
+
+    async fn fetch_err(base: &str) -> String {
+        google_workspace::discovery::fetch_discovery_document("drive", "v3", None, Some(base))
+            .await
+            .unwrap_err()
+            .to_string()
+    }
+
+    #[tokio::test]
+    async fn fetch_errors_redact_override() {
+        // Connection refused: reqwest's own error would echo the query.
+        let err = fetch_err("http://u:pw@127.0.0.1:9/p?key=k1").await;
+        assert!(err.contains("http://127.0.0.1:9/p"), "{err}");
+        assert!(!err.contains("pw") && !err.contains("k1"), "{err}");
+
+        let (server, _) = crate::test_util::serve_json(|_| None).await;
+        let err = fetch_err(&format!("{server}/p?key=k1")).await;
+        assert!(err.contains("HTTP 404"), "{err}");
+        assert!(err.contains(&format!("{server}/p")), "{err}");
+        assert!(!err.contains("k1"), "{err}");
     }
 }
