@@ -264,6 +264,33 @@ async fn get_json(
         .map_err(|e| GwsError::Other(anyhow::anyhow!("JSON parse failed: {e}")))
 }
 
+/// Merges the fetches behind a multi-source report. An API error (e.g. 403)
+/// on one source is a warning and that source reads as `{}`. The report
+/// fails if every source failed, or any failed for a non-API reason
+/// (network, guard, auth), since that points at a broken setup.
+fn collect_sources<const N: usize>(
+    results: [(&str, Result<Value, GwsError>); N],
+) -> Result<[Value; N], GwsError> {
+    let all_failed = results.iter().all(|(_, r)| r.is_err());
+    let mut values = Vec::with_capacity(N);
+    for (label, result) in results {
+        match result {
+            Ok(v) => values.push(v),
+            Err(e) if all_failed || !matches!(e, GwsError::Api { .. }) => return Err(e),
+            Err(e) => {
+                eprintln!(
+                    "Warning: Failed to fetch {label}: {}",
+                    sanitize_for_terminal(&e.to_string())
+                );
+                values.push(json!({}));
+            }
+        }
+    }
+    Ok(values
+        .try_into()
+        .unwrap_or_else(|_| unreachable!("one value per source")))
+}
+
 fn format_and_print(value: &Value, matches: &ArgMatches) {
     let fmt = matches
         .get_one::<String>("format")
@@ -290,7 +317,7 @@ async fn handle_standup_report(matches: &ArgMatches) -> Result<(), GwsError> {
     let time_max = today_end_tz.to_rfc3339();
 
     // Fetch today's events
-    let events_json = get_json(
+    let events_result = get_json(
         &client,
         &crate::api_base::api_url(crate::api_base::Api::Calendar, "calendars/primary/events")
             .await?,
@@ -303,14 +330,20 @@ async fn handle_standup_report(matches: &ArgMatches) -> Result<(), GwsError> {
             ("maxResults", "25"),
         ],
     )
-    .await
-    .inspect_err(|e| {
-        eprintln!(
-            "Warning: Failed to fetch calendar events: {}",
-            sanitize_for_terminal(&e.to_string())
-        );
-    })
-    .unwrap_or(json!({}));
+    .await;
+
+    // Fetch open tasks
+    let tasks_result = get_json(
+        &client,
+        &crate::api_base::api_url(crate::api_base::Api::Tasks, "tasks/v1/lists/@default/tasks")
+            .await?,
+        &token,
+        &[("showCompleted", "false"), ("maxResults", "20")],
+    )
+    .await;
+
+    let [events_json, tasks_json] =
+        collect_sources([("calendar events", events_result), ("tasks", tasks_result)])?;
     let events = events_json
         .get("items")
         .and_then(|i| i.as_array())
@@ -328,22 +361,6 @@ async fn handle_standup_report(matches: &ArgMatches) -> Result<(), GwsError> {
         })
         .collect();
 
-    // Fetch open tasks
-    let tasks_json = get_json(
-        &client,
-        &crate::api_base::api_url(crate::api_base::Api::Tasks, "tasks/v1/lists/@default/tasks")
-            .await?,
-        &token,
-        &[("showCompleted", "false"), ("maxResults", "20")],
-    )
-    .await
-    .inspect_err(|e| {
-        eprintln!(
-            "Warning: Failed to fetch tasks: {}",
-            sanitize_for_terminal(&e.to_string())
-        );
-    })
-    .unwrap_or(json!({}));
     let tasks = tasks_json
         .get("items")
         .and_then(|i| i.as_array())
@@ -565,7 +582,7 @@ async fn handle_weekly_digest(matches: &ArgMatches) -> Result<(), GwsError> {
     let time_max = week_end.to_rfc3339();
 
     // Fetch this week's events
-    let events_json = get_json(
+    let events_result = get_json(
         &client,
         &crate::api_base::api_url(crate::api_base::Api::Calendar, "calendars/primary/events")
             .await?,
@@ -578,14 +595,22 @@ async fn handle_weekly_digest(matches: &ArgMatches) -> Result<(), GwsError> {
             ("maxResults", "50"),
         ],
     )
-    .await
-    .inspect_err(|e| {
-        eprintln!(
-            "Warning: Failed to fetch calendar events: {}",
-            sanitize_for_terminal(&e.to_string())
-        );
-    })
-    .unwrap_or(json!({}));
+    .await;
+
+    // Fetch unread email count
+    let gmail_result = get_json(
+        &client,
+        &crate::api_base::api_url(crate::api_base::Api::Gmail, "gmail/v1/users/me/messages")
+            .await?,
+        &token,
+        &[("q", "is:unread"), ("maxResults", "1")],
+    )
+    .await;
+
+    let [events_json, gmail_json] = collect_sources([
+        ("calendar events", events_result),
+        ("unread email count", gmail_result),
+    ])?;
     let events = events_json
         .get("items")
         .and_then(|i| i.as_array())
@@ -602,22 +627,6 @@ async fn handle_weekly_digest(matches: &ArgMatches) -> Result<(), GwsError> {
         })
         .collect();
 
-    // Fetch unread email count
-    let gmail_json = get_json(
-        &client,
-        &crate::api_base::api_url(crate::api_base::Api::Gmail, "gmail/v1/users/me/messages")
-            .await?,
-        &token,
-        &[("q", "is:unread"), ("maxResults", "1")],
-    )
-    .await
-    .inspect_err(|e| {
-        eprintln!(
-            "Warning: Failed to fetch unread email count: {}",
-            sanitize_for_terminal(&e.to_string())
-        );
-    })
-    .unwrap_or(json!({}));
     let unread_estimate = gmail_json
         .get("resultSizeEstimate")
         .and_then(|v| v.as_u64())
@@ -720,6 +729,46 @@ async fn handle_file_announce(matches: &ArgMatches) -> Result<(), GwsError> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    fn api_err() -> GwsError {
+        GwsError::Api {
+            code: 403,
+            message: "forbidden".to_string(),
+            reason: "forbidden".to_string(),
+            enable_url: None,
+        }
+    }
+
+    fn other_err() -> GwsError {
+        GwsError::Other(anyhow::anyhow!("refusing to connect"))
+    }
+
+    #[test]
+    fn test_collect_sources_all_ok() {
+        let [a, b] =
+            collect_sources([("a", Ok(json!({"x": 1}))), ("b", Ok(json!({"y": 2})))]).unwrap();
+        assert_eq!(a, json!({"x": 1}));
+        assert_eq!(b, json!({"y": 2}));
+    }
+
+    #[test]
+    fn test_collect_sources_one_api_error_is_partial() {
+        let [a, b] = collect_sources([("a", Err(api_err())), ("b", Ok(json!({"y": 2})))]).unwrap();
+        assert_eq!(a, json!({}));
+        assert_eq!(b, json!({"y": 2}));
+    }
+
+    #[test]
+    fn test_collect_sources_all_failed_errors() {
+        let err = collect_sources([("a", Err(api_err())), ("b", Err(api_err()))]).unwrap_err();
+        assert!(matches!(err, GwsError::Api { code: 403, .. }));
+    }
+
+    #[test]
+    fn test_collect_sources_non_api_error_fails() {
+        let err = collect_sources([("a", Ok(json!({}))), ("b", Err(other_err()))]).unwrap_err();
+        assert!(matches!(err, GwsError::Other(_)));
+    }
 
     #[test]
     fn test_inject_commands() {

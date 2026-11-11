@@ -70,16 +70,7 @@ pub(super) async fn handle_renew(
     if let Some(name) = config.name {
         let name = crate::validate::validate_resource_name(&name)?;
         eprintln!("Reactivating subscription: {name}");
-        let resp = client
-            .post(format!("{base}v1/{name}:reactivate"))
-            .maybe_bearer_auth(&ws_token)
-            .header("Content-Type", "application/json")
-            .body("{}")
-            .send()
-            .await
-            .context("Failed to reactivate subscription")?;
-
-        let body: Value = resp.json().await.context("Failed to parse response")?;
+        let body = reactivate(&client, &base, &ws_token, name).await?;
         println!(
             "{}",
             serde_json::to_string_pretty(&body).context("Failed to serialize response body")?
@@ -93,9 +84,19 @@ pub(super) async fn handle_renew(
             .await
             .context("Failed to list subscriptions")?;
 
+        let status = resp.status();
+        if !status.is_success() {
+            let text = resp.text().await.unwrap_or_default();
+            return Err(crate::helpers::build_api_error(
+                status.as_u16(),
+                &text,
+                "Failed to list subscriptions",
+            ));
+        }
         let body: Value = resp.json().await.context("Failed to parse response")?;
 
         let mut renewed = 0;
+        let mut failures = Vec::new();
         if let Some(subs) = body.get("subscriptions").and_then(|s| s.as_array()) {
             let now = std::time::SystemTime::now()
                 .duration_since(std::time::UNIX_EPOCH)
@@ -107,21 +108,20 @@ pub(super) async fn handle_renew(
             for name in to_renew {
                 let name = crate::validate::validate_resource_name(&name)?;
                 eprintln!("Renewing {name}...");
-                let _ = client
-                    .post(format!("{base}v1/{name}:reactivate"))
-                    .maybe_bearer_auth(&ws_token)
-                    .header("Content-Type", "application/json")
-                    .body("{}")
-                    .send()
-                    .await;
-                renewed += 1;
+                match reactivate(&client, &base, &ws_token, name).await {
+                    Ok(_) => renewed += 1,
+                    Err(e) => {
+                        eprintln!(
+                            "Failed to renew {name}: {}",
+                            crate::output::sanitize_for_terminal(&e.to_string())
+                        );
+                        failures.push(e);
+                    }
+                }
             }
         }
 
-        let result = json!({
-            "status": "success",
-            "renewed": renewed,
-        });
+        let result = renewal_result(renewed, failures)?;
         println!(
             "{}",
             serde_json::to_string_pretty(&result).context("Failed to serialize result")?
@@ -129,6 +129,57 @@ pub(super) async fn handle_renew(
     }
 
     Ok(())
+}
+
+async fn reactivate(
+    client: &reqwest::Client,
+    base: &str,
+    token: &str,
+    name: &str,
+) -> Result<Value, GwsError> {
+    let resp = client
+        .post(format!("{base}v1/{name}:reactivate"))
+        .maybe_bearer_auth(token)
+        .header("Content-Type", "application/json")
+        .body("{}")
+        .send()
+        .await
+        .context("Failed to reactivate subscription")?;
+
+    let status = resp.status();
+    if !status.is_success() {
+        let text = resp.text().await.unwrap_or_default();
+        return Err(crate::helpers::build_api_error(
+            status.as_u16(),
+            &text,
+            &format!("Failed to reactivate {name}"),
+        ));
+    }
+    Ok(resp.json().await.context("Failed to parse response")?)
+}
+
+/// Success JSON when every renewal worked; otherwise the first failure,
+/// with its message prefixed by the overall tally.
+fn renewal_result(renewed: usize, failures: Vec<GwsError>) -> Result<Value, GwsError> {
+    let failed = failures.len();
+    let Some(first) = failures.into_iter().next() else {
+        return Ok(json!({ "status": "success", "renewed": renewed }));
+    };
+    let tally = format!("Renewed {renewed} of {} subscriptions", renewed + failed);
+    Err(match first {
+        GwsError::Api {
+            code,
+            message,
+            reason,
+            enable_url,
+        } => GwsError::Api {
+            code,
+            message: format!("{tally}; first failure: {message}"),
+            reason,
+            enable_url,
+        },
+        other => GwsError::Other(anyhow::anyhow!("{tally}; first failure: {other}")),
+    })
 }
 
 fn filter_subscriptions_to_renew(subs: &[Value], now_secs: u64, within_secs: u64) -> Vec<String> {
@@ -276,5 +327,79 @@ mod tests {
         // within 3h (10800s) -> should catch both
         let to_renew_all = filter_subscriptions_to_renew(&subs, base_ts, 10800);
         assert_eq!(to_renew_all.len(), 2);
+    }
+
+    fn api_err(code: u16) -> GwsError {
+        GwsError::Api {
+            code,
+            message: "boom".to_string(),
+            reason: "forbidden".to_string(),
+            enable_url: None,
+        }
+    }
+
+    #[test]
+    fn test_renewal_result_all_ok() {
+        let v = renewal_result(2, vec![]).unwrap();
+        assert_eq!(v, json!({ "status": "success", "renewed": 2 }));
+    }
+
+    #[test]
+    fn test_renewal_result_api_failure_keeps_code_and_tally() {
+        let failures = vec![api_err(403), api_err(500)];
+        match renewal_result(1, failures).unwrap_err() {
+            GwsError::Api {
+                code,
+                message,
+                reason,
+                ..
+            } => {
+                assert_eq!(code, 403);
+                assert_eq!(reason, "forbidden");
+                assert!(message.starts_with("Renewed 1 of 3 subscriptions"));
+                assert!(message.contains("boom"));
+            }
+            e => panic!("expected Api, got {e:?}"),
+        }
+    }
+
+    #[test]
+    fn test_renewal_result_non_api_failure() {
+        let failures = vec![GwsError::Other(anyhow::anyhow!("connection reset"))];
+        match renewal_result(0, failures).unwrap_err() {
+            GwsError::Other(e) => {
+                let msg = e.to_string();
+                assert!(msg.contains("Renewed 0 of 1"));
+                assert!(msg.contains("connection reset"));
+            }
+            e => panic!("expected Other, got {e:?}"),
+        }
+    }
+
+    #[tokio::test]
+    async fn test_reactivate_ok_and_error_status() {
+        let (url, _) = crate::test_util::serve_json(|path| {
+            (path == "/v1/subscriptions/ok:reactivate")
+                .then(|| json!({ "name": "subscriptions/ok" }))
+        })
+        .await;
+        let base = format!("{url}/");
+        let client = reqwest::Client::new();
+
+        let body = reactivate(&client, &base, "tok", "subscriptions/ok")
+            .await
+            .unwrap();
+        assert_eq!(body["name"], "subscriptions/ok");
+
+        match reactivate(&client, &base, "tok", "subscriptions/missing")
+            .await
+            .unwrap_err()
+        {
+            GwsError::Api { code, message, .. } => {
+                assert_eq!(code, 404);
+                assert!(message.contains("subscriptions/missing"));
+            }
+            e => panic!("expected Api, got {e:?}"),
+        }
     }
 }
