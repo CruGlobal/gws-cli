@@ -111,7 +111,10 @@ pub(super) async fn handle_renew(
                 match reactivate(&client, &base, &ws_token, name).await {
                     Ok(_) => renewed += 1,
                     Err(e) => {
-                        eprintln!("Failed to renew {name}: {e}");
+                        eprintln!(
+                            "Failed to renew {name}: {}",
+                            crate::output::sanitize_for_terminal(&e.to_string())
+                        );
                         failures.push(e);
                     }
                 }
