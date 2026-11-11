@@ -291,10 +291,23 @@ pub async fn fetch_discovery_document(
 
     tracing::debug!(service = %service, version = %version, "Fetching discovery document");
     let client = crate::client::build_client()?;
-    let resp = client.get(&url).send().await?;
+    // reqwest errors embed the full URL (query included); show a redacted one.
+    let resp = client.get(&url).send().await.map_err(|e| {
+        anyhow::anyhow!(
+            "Failed to fetch Discovery Document from {}: {}",
+            redact_url(&url),
+            e.without_url()
+        )
+    })?;
 
     let body = if resp.status().is_success() {
-        resp.text().await?
+        resp.text().await.map_err(|e| {
+            anyhow::anyhow!(
+                "Failed to read Discovery Document from {}: {}",
+                redact_url(&url),
+                e.without_url()
+            )
+        })?
     } else if let Some(alt_url) = discovery_fallback_url(service, base_url) {
         let alt_resp = client
             .get(&alt_url)
@@ -312,7 +325,8 @@ pub async fn fetch_discovery_document(
         // A base-URL override is set: the proxy serves every document, so we do
         // not fall back to per-service Google hosts (which would bypass it).
         anyhow::bail!(
-            "Failed to fetch Discovery Document for {service}/{version} from {url}: HTTP {}",
+            "Failed to fetch Discovery Document for {service}/{version} from {}: HTTP {}",
+            redact_url(&url),
             resp.status()
         );
     };
@@ -327,6 +341,20 @@ pub async fn fetch_discovery_document(
 
     let doc: RestDescription = serde_json::from_str(&body)?;
     Ok(doc)
+}
+
+/// A URL safe to print: scheme, host, port and path only. Userinfo, query and
+/// fragment can hold secrets and are dropped.
+pub fn redact_url(raw: &str) -> String {
+    let Ok(url) = reqwest::Url::parse(raw.trim()) else {
+        return "<unparseable URL>".to_string();
+    };
+    let mut out = format!("{}://{}", url.scheme(), url.host_str().unwrap_or(""));
+    if let Some(port) = url.port() {
+        out.push_str(&format!(":{port}"));
+    }
+    out.push_str(url.path());
+    out
 }
 
 #[cfg(test)]
@@ -493,5 +521,19 @@ mod tests {
         // Deterministic across runs (FNV-1a), fixed known value.
         assert_eq!(short_hash("https://proxy.example.com"), "b7266c31");
         assert_eq!(short_hash("https://proxy.example.com").len(), 8);
+    }
+
+    #[test]
+    fn test_redact_url_drops_userinfo_query_fragment() {
+        assert_eq!(
+            redact_url("https://user:pass@proxy.example.com:8443/base/x?token=abc#frag"),
+            "https://proxy.example.com:8443/base/x"
+        );
+        assert_eq!(
+            redact_url("http://127.0.0.1:8080"),
+            "http://127.0.0.1:8080/"
+        );
+        assert_eq!(redact_url("https://[::1]/p"), "https://[::1]/p");
+        assert_eq!(redact_url("not a url"), "<unparseable URL>");
     }
 }

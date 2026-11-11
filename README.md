@@ -534,6 +534,8 @@ If a required Google API is not enabled for your GCP project, you will see a
 2. In the GCP Console, click **Enable**.
 3. Wait ~10 seconds, then retry your `gws` command.
 
+To see which APIs are already enabled: `gcloud services list --enabled --project <PROJECT_ID>`.
+
 > [!TIP]
 > You can also run `gws auth setup` which walks you through enabling all required
 > APIs for your project automatically.

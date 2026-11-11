@@ -1453,15 +1453,6 @@ async fn handle_status() -> Result<(), GwsError> {
                 }
             }
         }
-
-        // Show enabled APIs if we have a project_id
-        if let Some(pid) = output.get("project_id").and_then(|v| v.as_str()) {
-            let enabled = crate::setup::get_enabled_apis(pid);
-            if !enabled.is_empty() {
-                output["enabled_apis"] = json!(enabled);
-                output["enabled_api_count"] = json!(enabled.len());
-            }
-        }
     } // end !cfg!(test)
 
     println!(
@@ -1475,23 +1466,23 @@ fn handle_logout() -> Result<(), GwsError> {
     let plain_path = plain_credentials_path();
     let enc_path = credential_store::encrypted_credentials_path();
     let token_cache = token_cache_path();
-    let sa_token_cache = config_dir().join("sa_token_cache.json");
+    let dir = config_dir();
+    let sa_token_cache = dir.join("sa_token_cache.json");
 
-    let mut removed = Vec::new();
-
-    for path in [&enc_path, &plain_path, &token_cache, &sa_token_cache] {
-        if path.exists() {
-            std::fs::remove_file(path).map_err(|e| {
-                GwsError::Validation(format!("Failed to remove {}: {e}", path.display()))
-            })?;
-            removed.push(path.display().to_string());
-        }
+    let (removed, kept) =
+        remove_files_in_dir(&[enc_path, plain_path, token_cache, sa_token_cache], &dir)?;
+    for path in &kept {
+        eprintln!(
+            "Note: not removing {path}: it is outside the gws config dir ({}). \
+             Delete it yourself if you no longer need it.",
+            dir.display()
+        );
     }
 
     // Invalidate cached account timezone (may belong to old account)
     crate::timezone::invalidate_cache();
 
-    let output = if removed.is_empty() {
+    let mut output = if removed.is_empty() {
         json!({
             "status": "success",
             "message": "No credentials found to remove.",
@@ -1503,12 +1494,44 @@ fn handle_logout() -> Result<(), GwsError> {
             "removed": removed,
         })
     };
+    if !kept.is_empty() {
+        output["kept"] = json!(kept);
+    }
 
     println!(
         "{}",
         serde_json::to_string_pretty(&output).unwrap_or_default()
     );
     Ok(())
+}
+
+/// Deletes each existing file in `paths` that resolves inside `dir`.
+/// Returns (removed, kept): kept are existing files outside `dir`, left alone.
+fn remove_files_in_dir(
+    paths: &[PathBuf],
+    dir: &Path,
+) -> Result<(Vec<String>, Vec<String>), GwsError> {
+    let mut removed = Vec::new();
+    let mut kept = Vec::new();
+    for path in paths.iter().filter(|p| p.exists()) {
+        if !is_within_dir(path, dir) {
+            kept.push(path.display().to_string());
+            continue;
+        }
+        std::fs::remove_file(path).map_err(|e| {
+            GwsError::Validation(format!("Failed to remove {}: {e}", path.display()))
+        })?;
+        removed.push(path.display().to_string());
+    }
+    Ok((removed, kept))
+}
+
+/// Whether `path` resolves (symlinks and `..` followed) to a spot inside `dir`.
+fn is_within_dir(path: &Path, dir: &Path) -> bool {
+    match (path.canonicalize(), dir.canonicalize()) {
+        (Ok(path), Ok(dir)) => path.starts_with(dir),
+        _ => false,
+    }
 }
 
 /// Extract refresh_token from yup-oauth2 v12 token cache.
@@ -1909,6 +1932,69 @@ mod tests {
         unsafe {
             std::env::remove_var("GOOGLE_WORKSPACE_CLI_CREDENTIALS_FILE");
         }
+    }
+
+    #[test]
+    fn remove_files_in_dir_keeps_outside_files() {
+        let tmp = tempfile::tempdir().unwrap();
+        let dir = tmp.path().join("gws");
+        std::fs::create_dir(&dir).unwrap();
+        let inside = dir.join("credentials.json");
+        let outside = tmp.path().join("adc.json");
+        let missing = dir.join("token_cache.json");
+        std::fs::write(&inside, "{}").unwrap();
+        std::fs::write(&outside, "{}").unwrap();
+        // `..` that escapes the dir must not count as inside.
+        let dotdot = dir.join("..").join("adc.json");
+
+        let (removed, kept) =
+            remove_files_in_dir(&[inside.clone(), dotdot.clone(), missing], &dir).unwrap();
+
+        assert_eq!(removed, vec![inside.display().to_string()]);
+        assert_eq!(kept, vec![dotdot.display().to_string()]);
+        assert!(!inside.exists());
+        assert!(outside.exists());
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn is_within_dir_follows_symlinks() {
+        let tmp = tempfile::tempdir().unwrap();
+        let dir = tmp.path().join("gws");
+        std::fs::create_dir(&dir).unwrap();
+        let outside = tmp.path().join("adc.json");
+        std::fs::write(&outside, "{}").unwrap();
+        let link = dir.join("credentials.json");
+        std::os::unix::fs::symlink(&outside, &link).unwrap();
+        assert!(!is_within_dir(&link, &dir));
+
+        // A symlinked config dir still counts as inside.
+        let dir_link = tmp.path().join("gws-link");
+        std::os::unix::fs::symlink(&dir, &dir_link).unwrap();
+        let real = dir.join("token_cache.json");
+        std::fs::write(&real, "{}").unwrap();
+        assert!(is_within_dir(&dir_link.join("token_cache.json"), &dir));
+        assert!(!is_within_dir(&dir.join("missing.json"), &dir));
+    }
+
+    #[test]
+    #[serial_test::serial]
+    fn logout_keeps_credentials_file_outside_config_dir() {
+        use crate::test_util::EnvVarGuard;
+        let tmp = tempfile::tempdir().unwrap();
+        let dir = tmp.path().join("gws");
+        std::fs::create_dir(&dir).unwrap();
+        let outside = tmp.path().join("adc.json");
+        std::fs::write(&outside, "{}").unwrap();
+        let cache = dir.join("token_cache.json");
+        std::fs::write(&cache, "{}").unwrap();
+        let _dir = EnvVarGuard::set("GOOGLE_WORKSPACE_CLI_CONFIG_DIR", &dir);
+        let _creds = EnvVarGuard::set("GOOGLE_WORKSPACE_CLI_CREDENTIALS_FILE", &outside);
+
+        handle_logout().unwrap();
+
+        assert!(outside.exists());
+        assert!(!cache.exists());
     }
 
     #[test]

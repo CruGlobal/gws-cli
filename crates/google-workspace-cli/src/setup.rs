@@ -441,15 +441,30 @@ fn gcloud_bin() -> &'static str {
 
 /// Create a gcloud Command with interactive prompts disabled.
 /// This prevents CBA proxy install prompts from blocking subprocess calls.
+/// gws's own env vars (tokens, client secrets, credential paths) are not
+/// passed to the child.
 fn gcloud_cmd() -> Command {
     let mut cmd = Command::new(gcloud_bin());
     cmd.env("CLOUDSDK_CORE_DISABLE_PROMPTS", "1");
+    for name in gws_env_var_names(std::env::vars_os().map(|(k, _)| k)) {
+        cmd.env_remove(name);
+    }
     cmd
+}
+
+/// Names with the `GOOGLE_WORKSPACE_CLI_` prefix.
+fn gws_env_var_names(names: impl Iterator<Item = std::ffi::OsString>) -> Vec<std::ffi::OsString> {
+    names
+        .filter(|n| {
+            n.to_str()
+                .is_some_and(|s| s.starts_with("GOOGLE_WORKSPACE_CLI_"))
+        })
+        .collect()
 }
 
 /// Check if gcloud CLI is installed.
 pub fn is_gcloud_installed() -> bool {
-    Command::new(gcloud_bin())
+    gcloud_cmd()
         .arg("version")
         .stdout(std::process::Stdio::null())
         .stderr(std::process::Stdio::null())
@@ -774,8 +789,7 @@ async fn enable_apis(
         .map(|api_id| {
             let project_id = project_id.to_string();
             async move {
-                let result = tokio::process::Command::new(gcloud_bin())
-                    .env("CLOUDSDK_CORE_DISABLE_PROMPTS", "1")
+                let result = tokio::process::Command::from(gcloud_cmd())
                     .args(["services", "enable", &api_id, "--project", &project_id])
                     .stdout(std::process::Stdio::null())
                     .stderr(std::process::Stdio::piped())
@@ -2330,6 +2344,46 @@ mod tests {
             .map(|(api, err)| json!({"api": api, "error": err}))
             .collect();
         assert!(json_failed.is_empty());
+    }
+
+    #[test]
+    fn gws_env_var_names_keeps_only_gws_prefix() {
+        let names = [
+            "GOOGLE_WORKSPACE_CLI_TOKEN",
+            "GOOGLE_WORKSPACE_CLI_CLIENT_SECRET",
+            "GOOGLE_APPLICATION_CREDENTIALS",
+            "PATH",
+        ]
+        .map(std::ffi::OsString::from);
+        assert_eq!(
+            gws_env_var_names(names.into_iter()),
+            [
+                "GOOGLE_WORKSPACE_CLI_TOKEN",
+                "GOOGLE_WORKSPACE_CLI_CLIENT_SECRET"
+            ]
+            .map(std::ffi::OsString::from)
+        );
+    }
+
+    #[test]
+    #[serial_test::serial]
+    fn gcloud_cmd_strips_gws_secrets() {
+        use crate::test_util::EnvVarGuard;
+        use std::ffi::OsStr;
+        let _token = EnvVarGuard::set("GOOGLE_WORKSPACE_CLI_TOKEN", "secret");
+        let _creds = EnvVarGuard::set("GOOGLE_WORKSPACE_CLI_CREDENTIALS_FILE", "/x.json");
+        let cmd = gcloud_cmd();
+        let envs: Vec<_> = cmd.get_envs().collect();
+        for name in [
+            "GOOGLE_WORKSPACE_CLI_TOKEN",
+            "GOOGLE_WORKSPACE_CLI_CREDENTIALS_FILE",
+        ] {
+            assert!(envs.contains(&(OsStr::new(name), None)), "{name}");
+        }
+        assert!(envs.contains(&(
+            OsStr::new("CLOUDSDK_CORE_DISABLE_PROMPTS"),
+            Some(OsStr::new("1"))
+        )));
     }
 
     #[test]
