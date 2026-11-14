@@ -1,5 +1,22 @@
 # @googleworkspace/cli
 
+## 0.26.0
+
+### Minor Changes
+
+- acece5c: `.env` is now read from the current directory only (parent directories are no longer searched). gws warns on stderr when `.env` sets a variable that changes where requests go or which credentials are used. New `GOOGLE_WORKSPACE_CLI_DOTENV`: `0` disables `.env` loading, `1` loads it without the warning.
+
+### Patch Changes
+
+- 901aa0f: Check the API host from a discovery document's `rootUrl`/`baseUrl` before sending a request. Without `GOOGLE_WORKSPACE_CLI_DISCOVERY_BASE_URL` it must be https on `googleapis.com`; with it, it must match the override's scheme, host and port. Foreign hosts (including from a tampered cache file) now fail with a discovery error and no token is sent.
+- 45cf651: `--dry-run` now fails fast with a validation error on helper commands that would ignore it and make real changes (`gmail +watch`, `workflow +file-announce`, `workflow +email-to-task`, `modelarmor +create-template`).
+- 5555dc6: `events +renew` and the workflow helpers now exit non-zero when their API calls fail, instead of reporting success.
+- 88d7f80: Validate Model Armor location before building the regional endpoint URL, so a crafted template name or `--location` can't redirect requests (and the auth token) to another host.
+- b7b3564: Harden release pipeline: update yanked async-executor and deny yanked crates, refresh only workspace versions in Cargo.lock at release (`cargo update -w`), use a read-only default token in the release workflow with write perms only on the tag-only release job, and remove the unused `npm/` installer.
+- 5d4ab14: Model Armor `block` mode now fails closed: if the sanitizer call fails, output is blocked with a non-zero exit instead of passing through unchecked. `gmail +watch` drops the message in that case.
+- 609db7d: `script +push` now skips symlinks (with a warning) and hidden directories, and refuses files that resolve outside the project directory, so files outside the project can't be uploaded as Apps Script source.
+- b802263: Security hardening (#129): `gcloud` child processes no longer inherit `GOOGLE_WORKSPACE_CLI_*` env vars, and `gws auth status` no longer runs `gcloud` (its `enabled_apis` fields are gone). `gws auth logout` only deletes files inside the gws config dir; a `GOOGLE_WORKSPACE_CLI_CREDENTIALS_FILE` outside it is kept, noted on stderr and listed under `kept`. The `GOOGLE_WORKSPACE_CLI_DISCOVERY_BASE_URL` value is shown without userinfo, query or fragment in warnings and errors.
+
 ## 0.25.0
 
 ### Minor Changes
