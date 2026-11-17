@@ -2,7 +2,7 @@
 name: recipe-create-expense-tracker
 description: "Set up a Google Sheets spreadsheet for tracking expenses with headers and initial entries."
 metadata:
-  version: 0.25.0
+  version: 0.26.0
   openclaw:
     category: "recipe"
     domain: "productivity"
