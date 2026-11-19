@@ -35,6 +35,10 @@ Brief description of the change
 
 Use `patch` for fixes/chores, `minor` for new features, `major` for breaking changes. The CI policy check will fail without a changeset.
 
+## Copyright Headers
+
+Keep upstream `Copyright 2026 Google LLC` lines. A changed upstream file also gets `Modifications Copyright <year> Cru` under it; a new file gets a `Copyright <year> Cru` Apache header (see `NOTICE`). `scripts/copyright-headers.sh` adds both: it runs as a Claude Code hook after each edit, as a lefthook pre-commit, and as a CI check. The one case it can't decide is a new file with a Google header: use the Cru header for new code, or keep Google plus the Modifications line if the code was moved from an upstream file.
+
 ## Architecture
 
 The CLI uses a **two-phase argument parsing** strategy:

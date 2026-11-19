@@ -10,6 +10,10 @@ This repository (https://github.com/CruGlobal/gws-cli) is a community-maintained
 fork by Cru (https://github.com/CruGlobal). Modifications made for this fork are
 Copyright 2026 Cru and are likewise licensed under the Apache License,
 Version 2.0. Original Google LLC copyright notices are retained in source files.
+Upstream files Cru changed add a "Modifications Copyright <year> Cru" line, and
+files Cru created carry "Copyright <year> Cru".
+
+"Cru" refers to Campus Crusade for Christ, Inc., which does business as Cru.
 
 gws-cli is not affiliated with, endorsed by, or sponsored by Google. "Google",
 "Google Workspace", and related marks are trademarks of Google LLC; any use of

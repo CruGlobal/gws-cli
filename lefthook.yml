@@ -1,6 +1,9 @@
 pre-commit:
   parallel: false
   commands:
+    copyright:
+      run: scripts/copyright-headers.sh {staged_files}
+      stage_fixed: true
     fmt:
       glob: "*.rs"
       run: cargo fmt -- --check
