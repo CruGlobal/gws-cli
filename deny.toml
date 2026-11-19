@@ -20,6 +20,10 @@ ignore = [
     { id = "RUSTSEC-2026-0370", reason = "zvariant merged into zbus 6; waiting on secret-service" },
     { id = "RUSTSEC-2026-0371", reason = "zbus_names merged into zbus 6; waiting on secret-service" },
     { id = "RUSTSEC-2026-0372", reason = "zvariant_derive merged into zbus 6; waiting on secret-service" },
+    # chrono and chrono-tz are direct deps and flagged unmaintained with no patched version.
+    # Unblock by migrating to jiff or time, then drop these.
+    { id = "RUSTSEC-2026-0543", reason = "chrono unmaintained, no fix; migrate to jiff/time" },
+    { id = "RUSTSEC-2026-0555", reason = "chrono-tz unmaintained, no fix; migrate to jiff/time" },
 ]
 db-urls = ["https://github.com/rustsec/advisory-db"]
 yanked = "deny"
