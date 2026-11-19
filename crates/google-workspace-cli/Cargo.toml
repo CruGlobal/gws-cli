@@ -67,4 +67,5 @@ uuid = { version = "1.22.0", features = ["v4", "v5"] }
 mime_guess2 = "2.3.1"
 
 [dev-dependencies]
+log = "0.4"
 serial_test = "4.0.1"

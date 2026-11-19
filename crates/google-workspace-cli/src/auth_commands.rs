@@ -235,23 +235,39 @@ fn urlencoding(s: &str) -> String {
     percent_encoding::utf8_percent_encode(s, percent_encoding::NON_ALPHANUMERIC).to_string()
 }
 
-/// Mask a secret string by showing only the first 4 and last 4 characters.
-/// Strings with 8 or fewer characters are fully replaced with "***".
+/// Mask a secret string, showing only its last 4 characters so two exports
+/// can be told apart. Strings with 8 or fewer characters become "***".
 ///
 /// Uses char-based indexing (not byte offsets) so multi-byte UTF-8 secrets
 /// never cause a panic.
 fn mask_secret(s: &str) -> String {
-    const MASK_PREFIX_LEN: usize = 4;
     const MASK_SUFFIX_LEN: usize = 4;
-    const MIN_LEN_FOR_PARTIAL_MASK: usize = MASK_PREFIX_LEN + MASK_SUFFIX_LEN;
+    const MIN_LEN_FOR_PARTIAL_MASK: usize = 8;
 
     let char_count = s.chars().count();
     if char_count > MIN_LEN_FOR_PARTIAL_MASK {
-        let prefix: String = s.chars().take(MASK_PREFIX_LEN).collect();
         let suffix: String = s.chars().skip(char_count - MASK_SUFFIX_LEN).collect();
-        format!("{prefix}...{suffix}")
+        format!("...{suffix}")
     } else {
         "***".to_string()
+    }
+}
+
+/// Mask every secret field of a credentials JSON object in place.
+/// Service-account key material is fully hidden (its PEM tail is not unique).
+fn mask_credentials(creds: &mut serde_json::Value) {
+    let Some(obj) = creds.as_object_mut() else {
+        return;
+    };
+    for key in ["client_secret", "refresh_token", "private_key_id"] {
+        if let Some(val) = obj.get_mut(key) {
+            if let Some(s) = val.as_str() {
+                *val = json!(mask_secret(s));
+            }
+        }
+    }
+    if let Some(val) = obj.get_mut("private_key") {
+        *val = json!("***");
     }
 }
 
@@ -694,18 +710,14 @@ async fn handle_export(unmasked: bool) -> Result<(), GwsError> {
             if unmasked {
                 println!("{contents}");
             } else if let Ok(mut creds) = serde_json::from_str::<serde_json::Value>(&contents) {
-                if let Some(obj) = creds.as_object_mut() {
-                    for key in ["client_secret", "refresh_token"] {
-                        if let Some(val) = obj.get_mut(key) {
-                            if let Some(s) = val.as_str() {
-                                *val = json!(mask_secret(s));
-                            }
-                        }
-                    }
-                }
+                mask_credentials(&mut creds);
                 println!("{}", serde_json::to_string_pretty(&creds).unwrap());
             } else {
-                println!("{contents}");
+                return Err(GwsError::Auth(
+                    "Saved credentials are not valid JSON; refusing to print them masked. \
+                     Use --unmasked to see the raw contents."
+                        .to_string(),
+                ));
             }
             Ok(())
         }
@@ -1419,12 +1431,12 @@ async fn handle_status() -> Result<(), GwsError> {
                                     }
 
                                     // Get granted scopes via tokeninfo
-                                    let tokeninfo_url = format!(
-                                        "https://oauth2.googleapis.com/tokeninfo?access_token={}",
-                                        access_token
-                                    );
-                                    if let Ok(info_resp) =
-                                        http_client.get(&tokeninfo_url).send().await
+                                    // POST body, not query string: URLs end up in proxy logs.
+                                    if let Ok(info_resp) = http_client
+                                        .post("https://oauth2.googleapis.com/tokeninfo")
+                                        .form(&[("access_token", access_token)])
+                                        .send()
+                                        .await
                                     {
                                         if let Ok(info_json) =
                                             info_resp.json::<serde_json::Value>().await
@@ -2467,7 +2479,35 @@ mod tests {
     #[test]
     fn mask_secret_long_string() {
         let masked = mask_secret("GOCSPX-abcdefghijklmnopqrstuvwxyz");
-        assert_eq!(masked, "GOCS...wxyz");
+        assert_eq!(masked, "...wxyz");
+    }
+
+    #[test]
+    fn mask_credentials_hides_service_account_key() {
+        let mut creds = json!({
+            "type": "service_account",
+            "client_email": "bot@example.iam.gserviceaccount.com",
+            "private_key_id": "0123456789abcdef0123",
+            "private_key": "-----BEGIN PRIVATE KEY-----\nMIIEv...\n-----END PRIVATE KEY-----\n",
+        });
+        mask_credentials(&mut creds);
+        assert_eq!(creds["private_key"], "***");
+        assert_eq!(creds["private_key_id"], "...0123");
+        assert_eq!(creds["client_email"], "bot@example.iam.gserviceaccount.com");
+    }
+
+    #[test]
+    fn mask_credentials_hides_user_secrets() {
+        let mut creds = json!({
+            "type": "authorized_user",
+            "client_id": "123.apps.googleusercontent.com",
+            "client_secret": "GOCSPX-abcdefghijklmnop",
+            "refresh_token": "1//0abcdefghijklmnopqrstuv",
+        });
+        mask_credentials(&mut creds);
+        assert_eq!(creds["client_secret"], "...mnop");
+        assert_eq!(creds["refresh_token"], "...stuv");
+        assert_eq!(creds["client_id"], "123.apps.googleusercontent.com");
     }
 
     #[test]
@@ -2480,18 +2520,17 @@ mod tests {
 
     #[test]
     fn mask_secret_boundary() {
-        // Exactly 9 chars — first 4 + last 4 with "..." in between
-        assert_eq!(mask_secret("123456789"), "1234...6789");
+        assert_eq!(mask_secret("123456789"), "...6789");
     }
 
     #[test]
     fn mask_secret_multibyte_utf8() {
         // Multi-byte chars must not panic (previously used byte slicing)
-        assert_eq!(mask_secret("áéíóúñüÁÉÍÓÚ"), "áéíó...ÉÍÓÚ");
+        assert_eq!(mask_secret("áéíóúñüÁÉÍÓÚ"), "...ÉÍÓÚ");
         // Short multi-byte — should fully mask
         assert_eq!(mask_secret("café"), "***");
         // Exactly at boundary with multi-byte (9 Greek chars)
-        assert_eq!(mask_secret("αβγδεζηθι"), "αβγδ...ζηθι");
+        assert_eq!(mask_secret("αβγδεζηθι"), "...ζηθι");
     }
 
     #[test]
