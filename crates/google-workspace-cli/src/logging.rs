@@ -77,6 +77,8 @@ pub fn init_logging() {
         (None, None)
     };
 
+    // Never bridge the `log` crate into tracing (no LogTracer, no `.init()`):
+    // yup-oauth2 logs auth codes, client secrets and token responses via `log`.
     // Compose layers and set as global subscriber.
     // The guard is leaked intentionally so the non-blocking writer stays
     // alive for the lifetime of the process.
@@ -102,6 +104,14 @@ mod tests {
         std::env::remove_var(ENV_LOG);
         std::env::remove_var(ENV_LOG_FILE);
         init_logging();
+    }
+
+    #[test]
+    #[serial_test::serial]
+    fn log_crate_stays_unbridged() {
+        let _guard = crate::test_util::EnvVarGuard::set(ENV_LOG, "yup_oauth2=trace");
+        init_logging();
+        assert_eq!(log::max_level(), log::LevelFilter::Off);
     }
 
     #[test]

@@ -1225,6 +1225,7 @@ dependencies = [
  "hostname",
  "jiff",
  "keyring",
+ "log",
  "mail-builder",
  "mime_guess2",
  "percent-encoding",
