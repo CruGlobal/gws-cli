@@ -14,227 +14,12 @@
 // limitations under the License.
 
 use std::collections::HashSet;
-use std::io::{BufRead, BufReader, Write};
-use std::net::TcpListener;
 use std::path::{Path, PathBuf};
 
-use serde::Deserialize;
 use serde_json::json;
 
 use crate::credential_store;
 use crate::error::GwsError;
-
-/// Response from Google's token endpoint
-#[derive(Debug, Deserialize)]
-struct OAuthTokenResponse {
-    access_token: String,
-    refresh_token: Option<String>,
-    #[allow(dead_code)]
-    expires_in: u64,
-    #[allow(dead_code)]
-    token_type: String,
-}
-
-/// Exchange authorization code for tokens using reqwest (supports HTTP proxy)
-async fn exchange_code_with_reqwest(
-    client_id: &str,
-    client_secret: &str,
-    code: &str,
-    redirect_uri: &str,
-) -> Result<OAuthTokenResponse, GwsError> {
-    let client = crate::client::shared_client()?;
-    let params = [
-        ("client_id", client_id),
-        ("client_secret", client_secret),
-        ("code", code),
-        ("redirect_uri", redirect_uri),
-        ("grant_type", "authorization_code"),
-    ];
-
-    let response = client
-        .post("https://oauth2.googleapis.com/token")
-        .form(&params)
-        .send()
-        .await
-        .map_err(|e| GwsError::Auth(format!("Failed to send token request: {e}")))?;
-
-    if !response.status().is_success() {
-        let status = response.status();
-        let body = crate::auth::response_text_or_placeholder(response.text().await);
-        return Err(GwsError::Auth(format!(
-            "Token exchange failed with status {}: {}",
-            status, body
-        )));
-    }
-
-    response
-        .json()
-        .await
-        .map_err(|e| GwsError::Auth(format!("Failed to parse token response: {e}")))
-}
-
-fn build_proxy_auth_url(client_id: &str, redirect_uri: &str, scopes: &[String]) -> String {
-    let scopes_str = scopes.join(" ");
-    format!(
-        "https://accounts.google.com/o/oauth2/auth?\
-         scope={}&\
-         access_type=offline&\
-         redirect_uri={}&\
-         response_type=code&\
-         client_id={}&\
-         prompt=select_account+consent",
-        urlencoding(&scopes_str),
-        urlencoding(redirect_uri),
-        urlencoding(client_id)
-    )
-}
-
-fn extract_authorization_code(request_line: &str) -> Result<String, GwsError> {
-    let path = request_line
-        .split_whitespace()
-        .nth(1)
-        .ok_or_else(|| GwsError::Auth("Invalid HTTP request".to_string()))?;
-
-    path.split('?')
-        .nth(1)
-        .and_then(|query| {
-            query.split('&').find_map(|pair| {
-                let mut parts = pair.split('=');
-                if parts.next() == Some("code") {
-                    parts.next().map(|value| value.to_string())
-                } else {
-                    None
-                }
-            })
-        })
-        .ok_or_else(|| GwsError::Auth("No authorization code in callback".to_string()))
-}
-
-/// Perform OAuth login flow with proxy support using reqwest for token exchange
-async fn login_with_proxy_support(
-    client_id: &str,
-    client_secret: &str,
-    scopes: &[String],
-) -> Result<(String, String), GwsError> {
-    // Start local server to receive OAuth callback
-    let listener = TcpListener::bind("127.0.0.1:0")
-        .map_err(|e| GwsError::Auth(format!("Failed to start local server: {e}")))?;
-    let port = listener
-        .local_addr()
-        .map_err(|e| GwsError::Auth(format!("Failed to inspect local server: {e}")))?
-        .port();
-    let redirect_uri = format!("http://localhost:{}", port);
-
-    let auth_url = build_proxy_auth_url(client_id, &redirect_uri, scopes);
-
-    println!("Open this URL in your browser to authenticate:\n");
-    println!("  {}\n", auth_url);
-
-    // Wait for OAuth callback
-    let (mut stream, _) = listener
-        .accept()
-        .map_err(|e| GwsError::Auth(format!("Failed to accept connection: {e}")))?;
-
-    let mut reader = BufReader::new(&stream);
-    let mut request_line = String::new();
-    reader
-        .read_line(&mut request_line)
-        .map_err(|e| GwsError::Auth(format!("Failed to read request: {e}")))?;
-
-    let code = extract_authorization_code(&request_line)?;
-
-    // Send success response to browser
-    let response = "HTTP/1.1 200 OK\r\nContent-Type: text/html\r\n\r\n\
-        <html><body><h1>Success!</h1><p>You may now close this window.</p></body></html>";
-    let _ = stream.write_all(response.as_bytes());
-
-    // Exchange code for tokens using reqwest (proxy-aware)
-    let token_response =
-        exchange_code_with_reqwest(client_id, client_secret, &code, &redirect_uri).await?;
-
-    let refresh_token = token_response.refresh_token.ok_or_else(|| {
-        GwsError::Auth(
-            "OAuth flow completed but no refresh token was returned. \
-                 Ensure the OAuth consent screen includes 'offline' access."
-                .to_string(),
-        )
-    })?;
-
-    Ok((token_response.access_token, refresh_token))
-}
-
-fn read_refresh_token_from_cache(temp_path: &Path) -> Result<String, GwsError> {
-    let token_data = std::fs::read(temp_path)
-        .ok()
-        .and_then(|bytes| crate::credential_store::decrypt(&bytes).ok())
-        .and_then(|decrypted| String::from_utf8(decrypted).ok())
-        .unwrap_or_default();
-
-    extract_refresh_token(&token_data).ok_or_else(|| {
-        GwsError::Auth(
-            "OAuth flow completed but no refresh token was returned. \
-             Ensure the OAuth consent screen includes 'offline' access."
-                .to_string(),
-        )
-    })
-}
-
-async fn login_with_yup_oauth(
-    config_dir: &Path,
-    client_id: &str,
-    client_secret: &str,
-    scopes: &[String],
-) -> Result<(String, String), GwsError> {
-    let secret = yup_oauth2::ApplicationSecret {
-        client_id: client_id.to_string(),
-        client_secret: client_secret.to_string(),
-        auth_uri: "https://accounts.google.com/o/oauth2/auth".to_string(),
-        token_uri: "https://oauth2.googleapis.com/token".to_string(),
-        redirect_uris: vec!["http://localhost".to_string()],
-        ..Default::default()
-    };
-
-    let temp_path = config_dir.join("credentials.tmp");
-    let _ = std::fs::remove_file(&temp_path);
-
-    let result = async {
-        let auth = yup_oauth2::InstalledFlowAuthenticator::builder(
-            secret,
-            yup_oauth2::InstalledFlowReturnMethod::HTTPRedirect,
-        )
-        .with_storage(Box::new(crate::token_storage::EncryptedTokenStorage::new(
-            temp_path.clone(),
-        )))
-        .force_account_selection(true)
-        .flow_delegate(Box::new(CliFlowDelegate { login_hint: None }))
-        .build()
-        .await
-        .map_err(|e| GwsError::Auth(format!("Failed to build authenticator: {e}")))?;
-
-        let scope_refs: Vec<&str> = scopes.iter().map(|s| s.as_str()).collect();
-        let token = auth
-            .token(&scope_refs)
-            .await
-            .map_err(|e| GwsError::Auth(format!("OAuth flow failed: {e}")))?;
-
-        let access_token = token
-            .token()
-            .ok_or_else(|| GwsError::Auth("No access token returned".to_string()))?
-            .to_string();
-        let refresh_token = read_refresh_token_from_cache(&temp_path)?;
-
-        Ok((access_token, refresh_token))
-    }
-    .await;
-
-    let _ = std::fs::remove_file(&temp_path);
-    result
-}
-
-/// Simple URL encoding
-fn urlencoding(s: &str) -> String {
-    percent_encoding::utf8_percent_encode(s, percent_encoding::NON_ALPHANUMERIC).to_string()
-}
 
 /// Mask a secret string, showing only its last 4 characters so two exports
 /// can be told apart. Strings with 8 or fewer characters become "***".
@@ -553,42 +338,6 @@ pub async fn run_login(args: &[String]) -> Result<(), GwsError> {
 
     handle_login_inner(scope_mode, services_filter).await
 }
-/// Custom delegate that prints the OAuth URL on its own line for easy copying.
-/// Optionally includes `login_hint` in the URL for account pre-selection.
-struct CliFlowDelegate {
-    login_hint: Option<String>,
-}
-
-impl yup_oauth2::authenticator_delegate::InstalledFlowDelegate for CliFlowDelegate {
-    fn present_user_url<'a>(
-        &'a self,
-        url: &'a str,
-        _need_code: bool,
-    ) -> std::pin::Pin<Box<dyn std::future::Future<Output = Result<String, String>> + Send + 'a>>
-    {
-        Box::pin(async move {
-            // Inject login_hint into the OAuth URL if we have one
-            let display_url = if let Some(ref hint) = self.login_hint {
-                let encoded: String = percent_encoding::percent_encode(
-                    hint.as_bytes(),
-                    percent_encoding::NON_ALPHANUMERIC,
-                )
-                .to_string();
-                if url.contains('?') {
-                    format!("{url}&login_hint={encoded}")
-                } else {
-                    format!("{url}?login_hint={encoded}")
-                }
-            } else {
-                url.to_string()
-            };
-            eprintln!("Open this URL in your browser to authenticate:\n");
-            eprintln!("  {display_url}\n");
-            Ok(String::new())
-        })
-    }
-}
-
 /// Inner login implementation that takes already-parsed options.
 async fn handle_login_inner(
     scope_mode: ScopeMode,
@@ -635,13 +384,8 @@ async fn handle_login_inner(
     std::fs::create_dir_all(&config)
         .map_err(|e| GwsError::Validation(format!("Failed to create config directory: {e}")))?;
 
-    // If proxy env vars are set, use proxy-aware OAuth flow (reqwest)
-    // Otherwise use yup-oauth2 (faster, but doesn't support proxy)
-    let (access_token, refresh_token) = if crate::auth::has_proxy_env() {
-        login_with_proxy_support(&client_id, &client_secret, &scopes).await?
-    } else {
-        login_with_yup_oauth(&config, &client_id, &client_secret, &scopes).await?
-    };
+    let (access_token, refresh_token) =
+        crate::oauth_login::login(&client_id, &client_secret, &scopes).await?;
 
     // Build credentials in the standard authorized_user format
     let creds_json = json!({
@@ -1547,42 +1291,6 @@ fn is_within_dir(path: &Path, dir: &Path) -> bool {
     }
 }
 
-/// Extract refresh_token from yup-oauth2 v12 token cache.
-///
-/// Supports two formats:
-/// 1. Array format (yup-oauth2 default file storage):
-///    [{"scopes":[...], "token":{"access_token":..., "refresh_token":...}}]
-/// 2. Object/HashMap format (EncryptedTokenStorage serialization):
-///    {"scope_key": {"access_token":..., "refresh_token":..., ...}}
-pub fn extract_refresh_token(token_data: &str) -> Option<String> {
-    let cache: serde_json::Value = serde_json::from_str(token_data).ok()?;
-
-    // Format 1: array of {scopes, token} entries
-    if let Some(arr) = cache.as_array() {
-        let result = arr.iter().find_map(|entry| {
-            entry
-                .get("token")
-                .and_then(|t| t.get("refresh_token"))
-                .and_then(|v| v.as_str())
-                .map(|s| s.to_string())
-        });
-        if result.is_some() {
-            return result;
-        }
-    }
-
-    // Format 2: HashMap<String, TokenInfo> — values are TokenInfo structs
-    if let Some(obj) = cache.as_object() {
-        for value in obj.values() {
-            if let Some(rt) = value.get("refresh_token").and_then(|v| v.as_str()) {
-                return Some(rt.to_string());
-            }
-        }
-    }
-
-    None
-}
-
 /// Parse --scopes or --readonly from args, falling back to DEFAULT_SCOPES.
 /// Scope entry with a human-readable label for the TUI picker.
 struct ScopeEntry {
@@ -2108,39 +1816,6 @@ mod tests {
         assert_eq!(String::from_utf8(decrypted).unwrap(), json);
     }
 
-    #[test]
-    fn extract_refresh_token_from_yup_oauth2_format() {
-        // Actual format produced by yup-oauth2 v12
-        let data = r#"[{"scopes":["https://www.googleapis.com/auth/drive"],"token":{"access_token":"ya29.test","refresh_token":"1//test-refresh-token","expires_at":[2026,43,19,44,15,0,0,0,0],"id_token":null}}]"#;
-        assert_eq!(
-            extract_refresh_token(data),
-            Some("1//test-refresh-token".to_string())
-        );
-    }
-
-    #[test]
-    fn extract_refresh_token_missing_token() {
-        let data = r#"[{"scopes":["scope"],"token":{"access_token":"ya29.test"}}]"#;
-        assert_eq!(extract_refresh_token(data), None);
-    }
-
-    #[test]
-    fn extract_refresh_token_empty_array() {
-        assert_eq!(extract_refresh_token("[]"), None);
-    }
-
-    #[test]
-    fn extract_refresh_token_invalid_json() {
-        assert_eq!(extract_refresh_token("not json"), None);
-    }
-
-    #[test]
-    fn extract_refresh_token_object_format() {
-        // HashMap<String, TokenInfo> format from EncryptedTokenStorage
-        let data = r#"{"key":{"access_token":"ya29","refresh_token":"1//tok"}}"#;
-        assert_eq!(extract_refresh_token(data), Some("1//tok".to_string()));
-    }
-
     // ── is_workspace_admin_scope tests ──────────────────────────────────
 
     #[test]
@@ -2623,57 +2298,5 @@ mod tests {
         };
         let result = extract_scopes_from_doc(&doc, false);
         assert!(result.is_empty());
-    }
-
-    #[test]
-    fn build_proxy_auth_url_encodes_scope_and_redirect_uri() {
-        let scopes = vec![
-            "https://www.googleapis.com/auth/drive".to_string(),
-            "openid".to_string(),
-        ];
-        let url = build_proxy_auth_url("client id", "http://localhost:8080/callback path", &scopes);
-
-        assert!(url.contains("client_id=client%20id"));
-        assert!(url.contains("redirect_uri=http%3A%2F%2Flocalhost%3A8080%2Fcallback%20path"));
-        assert!(url.contains(&format!(
-            "scope={}",
-            urlencoding("https://www.googleapis.com/auth/drive openid")
-        )));
-    }
-
-    #[test]
-    fn extract_authorization_code_returns_code() {
-        let code =
-            extract_authorization_code("GET /?state=abc&code=4/test-code&scope=openid HTTP/1.1")
-                .unwrap();
-        assert_eq!(code, "4/test-code");
-    }
-
-    #[test]
-    fn extract_authorization_code_rejects_missing_code() {
-        let err = extract_authorization_code("GET /?state=abc HTTP/1.1").unwrap_err();
-        assert!(err.to_string().contains("No authorization code"));
-    }
-
-    #[test]
-    fn read_refresh_token_from_cache_reads_encrypted_storage() {
-        let token_data = r#"[{"token":{"refresh_token":"1//refresh-token"}}]"#;
-        let encrypted = crate::credential_store::encrypt(token_data.as_bytes()).unwrap();
-        let mut file = tempfile::NamedTempFile::new().unwrap();
-        std::io::Write::write_all(&mut file, &encrypted).unwrap();
-
-        let refresh_token = read_refresh_token_from_cache(file.path()).unwrap();
-        assert_eq!(refresh_token, "1//refresh-token");
-    }
-
-    #[test]
-    fn read_refresh_token_from_cache_requires_refresh_token() {
-        let token_data = r#"[{"token":{"access_token":"ya29.no-refresh"}}]"#;
-        let encrypted = crate::credential_store::encrypt(token_data.as_bytes()).unwrap();
-        let mut file = tempfile::NamedTempFile::new().unwrap();
-        std::io::Write::write_all(&mut file, &encrypted).unwrap();
-
-        let err = read_refresh_token_from_cache(file.path()).unwrap_err();
-        assert!(err.to_string().contains("no refresh token was returned"));
     }
 }
