@@ -22,7 +22,8 @@
 
 use crate::auth::MaybeBearerAuth;
 use crate::error::GwsError;
-use chrono_tz::Tz;
+use jiff::tz::TimeZone;
+use jiff::{Timestamp, ZonedDateTime};
 use std::path::PathBuf;
 
 /// Cache filename stored in the gws config directory.
@@ -48,7 +49,7 @@ pub fn invalidate_cache() {
 }
 
 /// Read the cached timezone if it exists and is fresh (< 24h old).
-fn read_cache() -> Option<Tz> {
+fn read_cache() -> Option<TimeZone> {
     let path = cache_path();
     let metadata = std::fs::metadata(&path).ok()?;
     let modified = metadata.modified().ok()?;
@@ -58,7 +59,7 @@ fn read_cache() -> Option<Tz> {
     }
     let contents = std::fs::read_to_string(&path).ok()?;
     let tz_name = contents.trim();
-    tz_name.parse::<Tz>().ok()
+    TimeZone::get(tz_name).ok()
 }
 
 /// Write a timezone name to the cache file.
@@ -76,7 +77,10 @@ fn write_cache(tz_name: &str) {
 }
 
 /// Fetch the account timezone from the Google Calendar Settings API.
-async fn fetch_account_timezone(client: &reqwest::Client, token: &str) -> Result<Tz, GwsError> {
+async fn fetch_account_timezone(
+    client: &reqwest::Client,
+    token: &str,
+) -> Result<TimeZone, GwsError> {
     let base = crate::api_base::api_base(crate::api_base::Api::Calendar).await?;
     let url = format!("{base}users/me/settings/timezone");
     let resp = client
@@ -112,7 +116,7 @@ async fn fetch_account_timezone(client: &reqwest::Client, token: &str) -> Result
             ))
         })?;
 
-    let tz: Tz = tz_name.parse().map_err(|_| {
+    let tz = TimeZone::get(tz_name).map_err(|_| {
         GwsError::Other(anyhow::anyhow!(
             "Google returned unrecognized timezone: {tz_name}"
         ))
@@ -130,8 +134,8 @@ async fn fetch_account_timezone(client: &reqwest::Client, token: &str) -> Result
 }
 
 /// Parse an explicit timezone string, returning an error if invalid.
-pub fn parse_timezone(tz_str: &str) -> Result<Tz, GwsError> {
-    tz_str.parse::<Tz>().map_err(|_| {
+pub fn parse_timezone(tz_str: &str) -> Result<TimeZone, GwsError> {
+    TimeZone::get(tz_str).map_err(|_| {
         GwsError::Validation(format!(
             "Invalid timezone '{tz_str}'. Use an IANA timezone name (e.g. America/Denver, Europe/London, UTC)."
         ))
@@ -147,7 +151,7 @@ pub async fn resolve_account_timezone(
     client: &reqwest::Client,
     token: &str,
     tz_override: Option<&str>,
-) -> Result<Tz, GwsError> {
+) -> Result<TimeZone, GwsError> {
     // 1. Explicit override — fail if invalid
     if let Some(tz_str) = tz_override {
         let tz = parse_timezone(tz_str)?;
@@ -161,7 +165,11 @@ pub async fn resolve_account_timezone(
 
     // 2. Check cache
     if let Some(tz) = read_cache() {
-        tracing::debug!(timezone = %tz, source = "cache", "using cached timezone");
+        tracing::debug!(
+            timezone = tz.iana_name().unwrap_or_default(),
+            source = "cache",
+            "using cached timezone"
+        );
         return Ok(tz);
     }
 
@@ -173,44 +181,59 @@ pub async fn resolve_account_timezone(
         }
     }
 
-    // 4. Fall back to machine-local timezone
-    let local_iana = iana_time_zone_fallback();
+    // 4. Fall back to machine-local timezone (TZ env var, then OS setting)
+    let tz = TimeZone::system();
     tracing::warn!(
-        timezone = local_iana.as_str(),
+        timezone = describe_zone(&tz, Timestamp::now()),
         source = "local_machine",
         "using machine-local timezone as fallback"
     );
-    let tz: Tz = local_iana.parse().unwrap_or(chrono_tz::UTC);
     Ok(tz)
 }
 
-/// Return the start of today (midnight) in the given timezone as a
-/// timezone-aware `DateTime`. Errors if midnight cannot be resolved
-/// (e.g. a DST transition that skips midnight — extremely rare).
-pub fn start_of_today(tz: Tz) -> Result<chrono::DateTime<Tz>, crate::error::GwsError> {
-    use chrono::{NaiveTime, TimeZone, Utc};
-
-    let now_in_tz = Utc::now().with_timezone(&tz);
-    let today_start = now_in_tz
-        .date_naive()
-        .and_time(NaiveTime::from_hms_opt(0, 0, 0).unwrap());
-    tz.from_local_datetime(&today_start)
-        .earliest()
-        .ok_or_else(|| {
-            crate::error::GwsError::Other(anyhow::anyhow!(
-                "Could not determine start of day in timezone '{}'",
-                tz
-            ))
-        })
+/// Name a zone for logs. Unnamed zones (copied /etc/localtime, POSIX `TZ`
+/// strings) show their offset at `at` instead.
+fn describe_zone(tz: &TimeZone, at: Timestamp) -> String {
+    match tz.iana_name() {
+        Some(name) => name.to_string(),
+        None => format!(
+            "<unnamed, now {}>",
+            at.to_zoned_datetime(tz.clone()).strftime("%:z")
+        ),
+    }
 }
 
-/// Best-effort machine-local IANA timezone detection using the
-/// `iana-time-zone` crate, which reads the OS timezone database.
-fn iana_time_zone_fallback() -> String {
-    match iana_time_zone::get_timezone() {
-        Ok(tz) => tz,
-        Err(_) => "UTC".to_string(),
-    }
+/// Current time in `tz`.
+pub fn now_in(tz: &TimeZone) -> ZonedDateTime {
+    Timestamp::now().to_zoned_datetime(tz.clone())
+}
+
+/// Start of today (first instant of the local day) in `tz`. If a DST
+/// change skips midnight, this is the first valid time after it.
+pub fn start_of_today(tz: &TimeZone) -> Result<ZonedDateTime, GwsError> {
+    now_in(tz).start_of_day().map_err(|e| {
+        GwsError::Other(anyhow::anyhow!(
+            "Could not determine start of day in timezone '{}': {e}",
+            tz.iana_name().unwrap_or("<unnamed>")
+        ))
+    })
+}
+
+/// Add `days` calendar days (not 24h blocks), so midnight stays midnight
+/// across DST changes.
+pub fn add_days(zdt: &ZonedDateTime, days: i64) -> Result<ZonedDateTime, GwsError> {
+    jiff::Span::new()
+        .try_days(days)
+        .and_then(|span| zdt.checked_add(span))
+        .map_err(|e| GwsError::Validation(format!("Date out of range adding {days} days: {e}")))
+}
+
+/// Format as RFC 3339 with the local offset (e.g. `2026-03-08T00:00:00-07:00`),
+/// which is what the Calendar API expects for `timeMin`/`timeMax`.
+pub fn to_rfc3339(zdt: &ZonedDateTime) -> String {
+    zdt.timestamp()
+        .display_with_offset(zdt.offset())
+        .to_string()
 }
 
 #[cfg(test)]
@@ -220,13 +243,13 @@ mod tests {
     #[test]
     fn parse_valid_iana_timezone() {
         let tz = parse_timezone("America/Denver").unwrap();
-        assert_eq!(tz, chrono_tz::America::Denver);
+        assert_eq!(tz.iana_name(), Some("America/Denver"));
     }
 
     #[test]
     fn parse_utc_timezone() {
         let tz = parse_timezone("UTC").unwrap();
-        assert_eq!(tz, chrono_tz::UTC);
+        assert_eq!(tz.iana_name(), Some("UTC"));
     }
 
     #[test]
@@ -236,6 +259,17 @@ mod tests {
         let err = result.unwrap_err().to_string();
         assert!(err.contains("Invalid timezone"));
         assert!(err.contains("Not/A/Zone"));
+    }
+
+    #[test]
+    fn parse_rejects_paths_and_posix_strings() {
+        for bad in [
+            "../../../../etc/passwd",
+            "/etc/localtime",
+            "EST5EDT,M3.2.0,M11.1.0",
+        ] {
+            assert!(parse_timezone(bad).is_err(), "{bad} should be rejected");
+        }
     }
 
     #[test]
@@ -252,18 +286,48 @@ mod tests {
         // Write directly to test location
         std::fs::write(&cache_file, "America/New_York").unwrap();
         let contents = std::fs::read_to_string(&cache_file).unwrap();
-        let tz: Tz = contents.trim().parse().unwrap();
-        assert_eq!(tz, chrono_tz::America::New_York);
+        let tz = TimeZone::get(contents.trim()).unwrap();
+        assert_eq!(tz.iana_name(), Some("America/New_York"));
     }
 
     #[test]
-    fn iana_fallback_returns_valid_tz() {
-        let tz_name = iana_time_zone_fallback();
-        // Should be parseable
-        let result: Result<Tz, _> = tz_name.parse();
-        assert!(
-            result.is_ok(),
-            "Fallback timezone '{tz_name}' should be parseable"
-        );
+    fn describe_zone_uses_iana_name() {
+        let tz = TimeZone::get("America/Denver").unwrap();
+        assert_eq!(describe_zone(&tz, Timestamp::UNIX_EPOCH), "America/Denver");
+    }
+
+    #[test]
+    fn describe_zone_shows_offset_when_unnamed() {
+        let tz = TimeZone::posix("MST7MDT,M3.2.0,M11.1.0").unwrap();
+        assert_eq!(tz.iana_name(), None);
+        let winter: Timestamp = "2026-01-15T12:00:00Z".parse().unwrap();
+        let summer: Timestamp = "2026-07-15T12:00:00Z".parse().unwrap();
+        assert_eq!(describe_zone(&tz, winter), "<unnamed, now -07:00>");
+        assert_eq!(describe_zone(&tz, summer), "<unnamed, now -06:00>");
+    }
+
+    #[test]
+    fn start_of_day_plus_one_day_spans_dst_change() {
+        // 2026-03-08 is the US spring-forward day: that local day is 23h long.
+        let tz = TimeZone::get("America/Denver").unwrap();
+        let noon: Timestamp = "2026-03-08T19:00:00Z".parse().unwrap();
+        let start = noon.to_zoned_datetime(tz).start_of_day().unwrap();
+        let end = add_days(&start, 1).unwrap();
+        assert_eq!(to_rfc3339(&start), "2026-03-08T00:00:00-07:00");
+        assert_eq!(to_rfc3339(&end), "2026-03-09T00:00:00-06:00");
+    }
+
+    #[test]
+    fn add_days_rejects_out_of_range() {
+        let zdt = Timestamp::UNIX_EPOCH.to_zoned_datetime(TimeZone::UTC);
+        assert!(add_days(&zdt, i64::MAX).is_err());
+        assert!(add_days(&zdt, 10_000_000).is_err());
+    }
+
+    #[test]
+    fn to_rfc3339_has_no_zone_annotation() {
+        let tz = TimeZone::get("America/Denver").unwrap();
+        let zdt = Timestamp::UNIX_EPOCH.to_zoned_datetime(tz);
+        assert_eq!(to_rfc3339(&zdt), "1969-12-31T17:00:00-07:00");
     }
 }

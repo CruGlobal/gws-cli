@@ -232,8 +232,8 @@ async fn handle_agenda(matches: &ArgMatches) -> Result<(), GwsError> {
 
     // Determine time range using the account timezone so that --today and
     // --tomorrow align with the user's Google account day, not the machine.
-    let now_in_tz = chrono::Utc::now().with_timezone(&tz);
-    let today_start_tz = crate::timezone::start_of_today(tz)?;
+    let now_in_tz = crate::timezone::now_in(&tz);
+    let today_start_tz = crate::timezone::start_of_today(&tz)?;
 
     let days: i64 = if matches.get_flag("tomorrow") {
         1
@@ -248,21 +248,21 @@ async fn handle_agenda(matches: &ArgMatches) -> Result<(), GwsError> {
 
     let (time_min_dt, time_max_dt) = if matches.get_flag("today") {
         // Today: account tz midnight to midnight+1
-        let end = today_start_tz + chrono::Duration::days(1);
+        let end = crate::timezone::add_days(&today_start_tz, 1)?;
         (today_start_tz, end)
     } else if matches.get_flag("tomorrow") {
         // Tomorrow: account tz midnight+1 to midnight+2
-        let start = today_start_tz + chrono::Duration::days(1);
-        let end = today_start_tz + chrono::Duration::days(2);
+        let start = crate::timezone::add_days(&today_start_tz, 1)?;
+        let end = crate::timezone::add_days(&today_start_tz, 2)?;
         (start, end)
     } else {
         // From now, N days ahead
-        let end = now_in_tz + chrono::Duration::days(days);
+        let end = crate::timezone::add_days(&now_in_tz, days)?;
         (now_in_tz, end)
     };
 
-    let time_min = time_min_dt.to_rfc3339();
-    let time_max = time_max_dt.to_rfc3339();
+    let time_min = crate::timezone::to_rfc3339(&time_min_dt);
+    let time_max = crate::timezone::to_rfc3339(&time_max_dt);
 
     // client already built above for timezone resolution
     let calendar_filter = matches.get_one::<String>("calendar");
@@ -814,22 +814,15 @@ mod tests {
     /// Verify that agenda day boundaries use a specific timezone, not UTC.
     #[test]
     fn agenda_day_boundaries_use_account_timezone() {
-        use chrono::{NaiveTime, TimeZone, Utc};
+        use crate::timezone::{add_days, parse_timezone, start_of_today, to_rfc3339};
 
         // Simulate using a known account timezone (America/Denver = UTC-7 / UTC-6 DST)
-        let tz = chrono_tz::America::Denver;
-        let now_in_tz = Utc::now().with_timezone(&tz);
-        let today_start = now_in_tz
-            .date_naive()
-            .and_time(NaiveTime::from_hms_opt(0, 0, 0).unwrap());
-        let today_start_tz = tz
-            .from_local_datetime(&today_start)
-            .earliest()
-            .expect("midnight should resolve");
+        let tz = parse_timezone("America/Denver").unwrap();
+        let today_start_tz = start_of_today(&tz).expect("midnight should resolve");
 
-        let today_rfc = today_start_tz.to_rfc3339();
-        let tomorrow_start = today_start_tz + chrono::Duration::days(1);
-        let tomorrow_rfc = tomorrow_start.to_rfc3339();
+        let today_rfc = to_rfc3339(&today_start_tz);
+        let tomorrow_start = add_days(&today_start_tz, 1).unwrap();
+        let tomorrow_rfc = to_rfc3339(&tomorrow_start);
 
         // The Denver offset should appear in the RFC3339 string (-07:00 or -06:00 for DST).
         // Crucially, it should NOT be +00:00 (UTC).

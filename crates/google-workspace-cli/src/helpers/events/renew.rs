@@ -224,9 +224,9 @@ fn parse_duration(s: &str) -> Result<u64, GwsError> {
 
 /// Parse an RFC 3339 timestamp to Unix seconds.
 fn parse_rfc3339_rough(s: &str) -> Option<u64> {
-    chrono::DateTime::parse_from_rfc3339(s)
+    s.parse::<jiff::Timestamp>()
         .ok()
-        .map(|dt| dt.timestamp() as u64)
+        .map(|ts| ts.as_second() as u64)
 }
 
 #[cfg(test)]

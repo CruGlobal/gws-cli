@@ -310,11 +310,11 @@ async fn handle_standup_report(matches: &ArgMatches) -> Result<(), GwsError> {
 
     // Resolve account timezone for day boundaries
     let tz = crate::timezone::resolve_account_timezone(&client, &token, None).await?;
-    let now_in_tz = chrono::Utc::now().with_timezone(&tz);
-    let today_start_tz = crate::timezone::start_of_today(tz)?;
-    let today_end_tz = today_start_tz + chrono::Duration::days(1);
-    let time_min = today_start_tz.to_rfc3339();
-    let time_max = today_end_tz.to_rfc3339();
+    let now_in_tz = crate::timezone::now_in(&tz);
+    let today_start_tz = crate::timezone::start_of_today(&tz)?;
+    let today_end_tz = crate::timezone::add_days(&today_start_tz, 1)?;
+    let time_min = crate::timezone::to_rfc3339(&today_start_tz);
+    let time_max = crate::timezone::to_rfc3339(&today_end_tz);
 
     // Fetch today's events
     let events_result = get_json(
@@ -382,7 +382,7 @@ async fn handle_standup_report(matches: &ArgMatches) -> Result<(), GwsError> {
         "meetingCount": meetings.len(),
         "tasks": open_tasks,
         "taskCount": open_tasks.len(),
-        "date": now_in_tz.format("%Y-%m-%d").to_string(),
+        "date": now_in_tz.date().to_string(),
     });
 
     format_and_print(&output, matches);
@@ -403,7 +403,7 @@ async fn handle_meeting_prep(matches: &ArgMatches) -> Result<(), GwsError> {
 
     // Use account timezone for current time
     let tz = crate::timezone::resolve_account_timezone(&client, &token, None).await?;
-    let now_rfc = chrono::Utc::now().with_timezone(&tz).to_rfc3339();
+    let now_rfc = crate::timezone::to_rfc3339(&crate::timezone::now_in(&tz));
 
     let events_url = crate::api_base::api_url(
         crate::api_base::Api::Calendar,
@@ -576,10 +576,10 @@ async fn handle_weekly_digest(matches: &ArgMatches) -> Result<(), GwsError> {
 
     // Resolve account timezone for week boundaries
     let tz = crate::timezone::resolve_account_timezone(&client, &token, None).await?;
-    let now_in_tz = chrono::Utc::now().with_timezone(&tz);
-    let week_end = now_in_tz + chrono::Duration::days(7);
-    let time_min = now_in_tz.to_rfc3339();
-    let time_max = week_end.to_rfc3339();
+    let now_in_tz = crate::timezone::now_in(&tz);
+    let week_end = crate::timezone::add_days(&now_in_tz, 7)?;
+    let time_min = crate::timezone::to_rfc3339(&now_in_tz);
+    let time_max = crate::timezone::to_rfc3339(&week_end);
 
     // Fetch this week's events
     let events_result = get_json(

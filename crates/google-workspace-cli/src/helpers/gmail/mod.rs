@@ -1050,11 +1050,16 @@ pub(super) fn format_address_list_with_links(mailboxes: &[Mailbox]) -> String {
 
 /// Reformat an RFC 2822 date to Gmail's human-friendly attribution style:
 /// `"Wed, Mar 4, 2026 at 3:01\u{202f}PM"` (`\u{202f}` = narrow no-break space
-/// before AM/PM). Falls back to the raw date (HTML-escaped) if chrono cannot
-/// parse it.
+/// before AM/PM). Falls back to the raw date (HTML-escaped) if it cannot be
+/// parsed.
 pub(super) fn format_date_for_attribution(raw_date: &str) -> String {
-    chrono::DateTime::parse_from_rfc2822(raw_date)
-        .map(|dt| html_escape(&dt.format("%a, %b %-d, %Y at %-I:%M\u{202f}%p").to_string()))
+    jiff::fmt::rfc2822::parse(raw_date)
+        .map(|dt| {
+            html_escape(
+                &dt.strftime("%a, %b %-d, %Y at %-I:%M\u{202f}%p")
+                    .to_string(),
+            )
+        })
         .unwrap_or_else(|e| {
             eprintln!(
                 "Note: could not parse date as RFC 2822 ({}); using raw value.",
@@ -2904,6 +2909,17 @@ mod tests {
             format_date_for_attribution("Wed, 04 Mar 2026 15:01:00 +0000"),
             "Wed, Mar 4, 2026 at 3:01\u{202f}PM"
         );
+        for raw in [
+            "Wed, 04 Mar 2026 15:01:00 GMT",
+            "Wed, 4 Mar 2026 15:01:00 +0000 (UTC)",
+            "4 Mar 2026 15:01:00 +0000",
+        ] {
+            assert_eq!(
+                format_date_for_attribution(raw),
+                "Wed, Mar 4, 2026 at 3:01\u{202f}PM",
+                "{raw}"
+            );
+        }
         assert_eq!(
             format_date_for_attribution("Jan 1 <2026>"),
             "Jan 1 &lt;2026&gt;"
