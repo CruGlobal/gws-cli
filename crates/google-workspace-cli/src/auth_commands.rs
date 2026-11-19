@@ -1419,12 +1419,12 @@ async fn handle_status() -> Result<(), GwsError> {
                                     }
 
                                     // Get granted scopes via tokeninfo
-                                    let tokeninfo_url = format!(
-                                        "https://oauth2.googleapis.com/tokeninfo?access_token={}",
-                                        access_token
-                                    );
-                                    if let Ok(info_resp) =
-                                        http_client.get(&tokeninfo_url).send().await
+                                    // POST body, not query string: URLs end up in proxy logs.
+                                    if let Ok(info_resp) = http_client
+                                        .post("https://oauth2.googleapis.com/tokeninfo")
+                                        .form(&[("access_token", access_token)])
+                                        .send()
+                                        .await
                                     {
                                         if let Ok(info_json) =
                                             info_resp.json::<serde_json::Value>().await
