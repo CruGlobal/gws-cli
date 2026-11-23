@@ -1,5 +1,21 @@
 # @googleworkspace/cli
 
+## 0.26.1
+
+### Patch Changes
+
+- 256d1f2: `calendar +agenda` now follows `nextPageToken` for the calendar list and every calendar's events, and fails naming the calendars it could not read instead of showing them as empty
+- 1a3b67d: `gws auth export` (masked) now shows only the last 4 characters of each secret, hides a service account's `private_key` and `private_key_id`, and refuses to print credentials that are not valid JSON instead of printing them unmasked.
+- 1a3b67d: `gws auth status` now sends the access token to Google's tokeninfo endpoint in the POST body instead of the URL query string, so it no longer shows up in proxy or server logs.
+- 5e19d94: Update `url` to 2.5.9 to fix RUSTSEC-2026-0592 (stack overflow in `Url::origin()` on nested `blob:` URLs).
+- aeaa326: Replace unmaintained `chrono`/`chrono-tz`/`iana-time-zone` with `jiff` (RUSTSEC-2026-0543, RUSTSEC-2026-0555). `calendar +agenda --today/--tomorrow` and the workflow standup/review day ranges now end at the next local midnight on DST-change days (previously off by an hour). The machine-local timezone fallback now honors the `TZ` env var.
+- 709673d: Source headers now follow `NOTICE`: upstream files changed by Cru carry a "Modifications Copyright 2026 Cru" line, and files Cru created carry "Copyright 2026 Cru". `NOTICE` names Cru's legal entity (Campus Crusade for Christ, Inc.).
+- 59d2fb6: Dependency updates:
+  
+  - bump the cargo-minor-patch group with 3 updates (#156)
+- ddd804c: `gws auth login` now uses one built-in browser login flow with a `state` check and PKCE (S256), replacing yup-oauth2's flow and the separate proxy flow. The local callback server ignores stray or forged requests instead of taking the first connection, reports a cancelled login, times out after 5 minutes, and the login URL is always printed to stderr.
+- 1a3b67d: When `credentials.enc` cannot be decrypted, gws now stops with an error instead of deleting the file and silently falling back to other credentials (plaintext file or ADC), which could switch accounts. Run `gws auth login` to sign in again or `gws auth logout` to remove the file.
+
 ## 0.26.0
 
 ### Minor Changes
